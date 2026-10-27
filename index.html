@@ -5,340 +5,384 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ad comments</title>
 <style>
-  :root{--bg:#f5f6f8;--panel:#fff;--line:#e3e5e8;--text:#1c1e21;--muted:#65676b;--blue:#1b74e4;--red:#d93025;--amber:#b45309;--green:#1a7f37;}
+  :root{--bg:#f3f4f6;--panel:#fff;--line:#e5e7eb;--text:#111827;--muted:#6b7280;--blue:#2563eb;--blue-bg:#eff6ff;--red:#dc2626;--red-bg:#fef2f2;--amber:#b45309;--amber-bg:#fffbeb;--green:#15803d;--green-bg:#f0fdf4;--ig:#d62976;--r:10px}
   *{box-sizing:border-box}
-  body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
-  header{display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
-  header h1{font-size:16px;margin:0 12px 0 0;font-weight:600}
-  input,select,button,textarea{font:inherit}
-  input[type=text],input[type=password],select,textarea{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
-  button{padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
-  button:hover{background:#f0f2f5}
+  html,body{height:100%}
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
+  input,select,button,textarea{font:inherit;color:inherit}
+  input[type=text],input[type=password],input[type=search],select,textarea{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-bg)}
+  button{padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  button:hover{background:#f9fafb}
   button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
-  button.primary:hover{background:#1660c0}
+  button.primary:hover{background:#1d4ed8}
   button.danger{color:var(--red)}
-  button.danger:hover{background:#fdecea}
-  button:disabled{opacity:.5;cursor:default}
-  .status{color:var(--muted);font-size:13px;margin-left:auto}
-  main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 56px)}
-  aside{background:var(--panel);border-right:1px solid var(--line);padding:12px;overflow:auto}
-  aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 6px}
-  .acct{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;font-size:13px}
-  .acct:hover{background:#f0f2f5}
+  button.danger:hover{background:var(--red-bg);border-color:#fca5a5}
+  button.sm{padding:5px 10px;font-size:13px}
+  button:disabled{opacity:.45;cursor:default}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  a{color:var(--blue);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* welcome */
+  #welcome{max-width:560px;margin:60px auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:32px}
+  #welcome h1{margin:0 0 6px;font-size:22px}
+  #welcome p{margin:0 0 18px;color:var(--muted)}
+  #welcome .row{display:flex;gap:8px}
+  #welcome .row input{flex:1}
+  #welcome details{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+  #welcome summary{cursor:pointer;font-weight:600}
+  #welcome ol{padding-left:20px;color:#374151}
+  #welcome li{margin:6px 0}
+  code{background:#f3f4f6;padding:1px 5px;border-radius:4px;font-size:12.5px}
+  .err{color:var(--red);font-size:13px;margin-top:8px}
+
+  /* app */
+  #app{display:none;height:100%;grid-template-rows:auto 1fr}
+  header{display:flex;gap:10px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:16px;margin:0;font-weight:650}
+  header .who{color:var(--muted);font-size:13px}
+  header .sp{flex:1}
+  main{display:grid;grid-template-columns:300px 1fr;min-height:0}
+  aside{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  aside .top{padding:12px 12px 8px;border-bottom:1px solid var(--line)}
+  aside .top input{width:100%;margin-bottom:8px}
+  aside .top .btns{display:flex;gap:6px;align-items:center}
+  aside .list{overflow:auto;flex:1;padding:6px}
+  .acct{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13.5px}
+  .acct:hover{background:#f3f4f6}
+  .acct.active{background:var(--blue-bg)}
   .acct .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .acct .c{color:var(--muted);font-size:12px;min-width:28px;text-align:right}
-  .acct .c.bad{color:var(--red)}
-  .acct.loading .c{color:var(--blue)}
-  section{padding:12px 16px;overflow:auto}
-  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-  .toolbar .grow{flex:1;min-width:200px}
-  .bulk{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#fff8e1;border:1px solid #f1e3a6;border-radius:6px;margin-bottom:10px}
-  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
-  th{font-size:12px;color:var(--muted);font-weight:600;background:#fafbfc;position:sticky;top:56px}
-  tr.hidden-c td{opacity:.55}
-  td.txt{max-width:480px;white-space:pre-wrap;word-break:break-word}
-  .meta{color:var(--muted);font-size:12px}
-  .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--line);color:var(--muted);margin-right:4px}
-  .badge.ig{border-color:#e1306c;color:#e1306c}
-  .badge.fb{border-color:var(--blue);color:var(--blue)}
-  .badge.hid{border-color:var(--amber);color:var(--amber)}
-  .badge.reply{border-color:#999;color:#777}
-  td.act{white-space:nowrap}
-  td.act button{padding:4px 8px;font-size:12px;margin-right:4px}
-  .empty{padding:40px;text-align:center;color:var(--muted)}
-  .err{color:var(--red);font-size:12px}
-  .replybox{margin-top:6px;display:flex;gap:6px}
-  .replybox textarea{flex:1;min-height:40px}
-  details.help{margin-top:16px;font-size:13px;color:var(--muted)}
-  details.help code{background:#eef0f3;padding:1px 4px;border-radius:3px}
-  .confirm{display:inline-flex;gap:6px;align-items:center;color:var(--red);font-size:12px}
-  a{color:var(--blue)}
-  .log{font-size:12px;color:var(--muted);max-height:120px;overflow:auto;margin-top:8px;white-space:pre-wrap}
+  .pill{font-size:11.5px;padding:2px 8px;border-radius:999px;background:#f3f4f6;color:var(--muted);min-width:24px;text-align:center}
+  .pill.ok{background:var(--green-bg);color:var(--green)}
+  .pill.zero{background:#f3f4f6;color:#9ca3af}
+  .pill.bad{background:var(--red-bg);color:var(--red)}
+  .pill.busy{background:var(--blue-bg);color:var(--blue)}
+  .progress{height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;margin-top:8px;display:none}
+  .progress i{display:block;height:100%;background:var(--blue);width:0;transition:width .3s}
+
+  section{overflow:auto;padding:16px 20px;min-height:0}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar input[type=search]{flex:1;min-width:220px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;cursor:pointer;font-size:13px}
+  .chip.on{background:var(--text);color:#fff;border-color:var(--text)}
+  .bulk{position:sticky;top:0;z-index:3;display:flex;gap:8px;align-items:center;padding:10px 14px;background:#111827;color:#fff;border-radius:var(--r);margin-bottom:12px;box-shadow:0 6px 20px rgba(0,0,0,.15)}
+  .bulk button{background:#1f2937;color:#fff;border-color:#374151}
+  .bulk button:hover{background:#374151}
+  .bulk button.danger{color:#fca5a5}
+  .bulk .sp{flex:1}
+
+  .group{margin-bottom:18px}
+  .group h3{margin:0 0 6px;font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .group h3 .sub{color:var(--muted);font-weight:400}
+  .card{display:grid;grid-template-columns:28px 40px 1fr auto;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;align-items:start}
+  .card.hidden-c{background:#fafafa}
+  .card.hidden-c .body{opacity:.6}
+  .card.spam{border-left:3px solid var(--amber)}
+  .card input[type=checkbox]{margin-top:4px;width:16px;height:16px}
+  .avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:#fff;font-size:15px}
+  .body .top{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .body .user{font-weight:600}
+  .body .ctx{font-size:12px;color:var(--muted);margin-top:2px}
+  .body .txt{margin-top:6px;white-space:pre-wrap;word-break:break-word}
+  .tag{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.ig{border-color:#f5c1d6;color:var(--ig);background:#fdf2f8}
+  .tag.fb{border-color:#bfdbfe;color:var(--blue);background:var(--blue-bg)}
+  .tag.hid{border-color:#fde68a;color:var(--amber);background:var(--amber-bg)}
+  .tag.spam{border-color:#fde68a;color:var(--amber);background:var(--amber-bg)}
+  .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .replybox{margin-top:8px;display:flex;gap:6px}
+  .replybox textarea{flex:1;min-height:38px;resize:vertical}
+  .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--red)}
+  .empty{padding:60px 20px;text-align:center;color:var(--muted)}
+  .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+  #toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:9}
+  .toast{background:#111827;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);display:flex;gap:12px;align-items:center}
+  .toast.bad{background:var(--red)}
+  .toast button{background:transparent;border:0;color:#93c5fd;padding:0}
+  @media (max-width:800px){main{grid-template-columns:1fr}aside{max-height:40vh;border-right:0;border-bottom:1px solid var(--line)}.card{grid-template-columns:24px 1fr}.avatar{display:none}.acts{grid-column:1/-1;justify-content:flex-start}}
 </style>
 </head>
 <body>
-<header>
+
+<div id="welcome">
   <h1>Ad comments</h1>
-  <input type="password" id="token" placeholder="Paste access token" style="width:320px">
-  <button class="primary" id="connect">Connect</button>
-  <label><input type="checkbox" id="inclPaused"> include paused ads</label>
-  <button id="loadAll" disabled>Load all accounts</button>
-  <span class="status" id="status">Not connected</span>
-</header>
-<main>
-  <aside>
-    <h2>Ad accounts <span id="acctCount"></span></h2>
-    <div id="accts"><div class="meta">Connect to list accounts.</div></div>
-    <details class="help">
-      <summary>Setup: system user token (never expires)</summary>
-      <ol>
-        <li>business.facebook.com → Settings → Users → <b>System users</b> → Add. Role: Admin.</li>
-        <li>Assign assets: every ad account (Manage) and every Page (Full control).</li>
-        <li>Generate token → pick (or create) an app → tick <code>ads_read</code>, <code>ads_management</code>, <code>pages_read_engagement</code>, <code>pages_manage_engagement</code>, <code>pages_show_list</code>, <code>instagram_basic</code>, <code>instagram_manage_comments</code>. Expiry: Never.</li>
-        <li>Paste it above. It's stored only in this browser.</li>
-      </ol>
-      <p>Short-term alternative: a user token from Graph API Explorer with the same permissions. Expires in ~2 hours.</p>
-      <p>Known gaps: Advantage+ catalog ads and Stories can't be moderated via the API. Replying on page-backed Instagram ads isn't possible.</p>
-    </details>
-    <div class="log" id="log"></div>
-  </aside>
-  <section>
-    <div class="toolbar">
-      <input type="text" id="q" class="grow" placeholder="Search comment text, user, ad, campaign…">
-      <select id="fPlat"><option value="">All platforms</option><option value="ig">Instagram</option><option value="fb">Facebook</option></select>
-      <select id="fHid"><option value="">Visible + hidden</option><option value="vis">Visible only</option><option value="hid">Hidden only</option></select>
-      <select id="fAcct"><option value="">All loaded accounts</option></select>
-      <span class="meta" id="count"></span>
-    </div>
-    <div class="bulk" id="bulk" style="display:none">
-      <span id="selCount"></span>
-      <button id="bHide">Hide</button>
-      <button id="bUnhide">Unhide</button>
-      <button class="danger" id="bDel">Delete</button>
-      <span id="bConfirm"></span>
-      <button id="bClear" style="margin-left:auto">Clear selection</button>
-    </div>
-    <table>
-      <thead><tr>
-        <th style="width:28px"><input type="checkbox" id="selAll"></th>
-        <th>Account / ad</th>
-        <th>From</th>
-        <th>Comment</th>
-        <th>When</th>
-        <th>Actions</th>
-      </tr></thead>
-      <tbody id="rows"><tr><td colspan="6" class="empty">Nothing loaded yet.</td></tr></tbody>
-    </table>
-  </section>
-</main>
+  <p>See and moderate comments on every Facebook and Instagram ad across all your ad accounts, in one place.</p>
+  <div class="row"><input type="password" id="token" placeholder="Paste your Meta access token"><button class="primary" id="connect">Connect</button></div>
+  <div class="err" id="werr"></div>
+  <p class="small muted" style="margin-top:10px">The token stays in this browser only. Nothing is sent anywhere except to Meta.</p>
+  <details>
+    <summary>How to get a token that never expires</summary>
+    <ol>
+      <li>Go to <a href="https://business.facebook.com/settings/system-users" target="_blank">Business Settings → System users</a> and add one (role: Admin).</li>
+      <li>Assign assets: every ad account (Manage) and every Page (Full control).</li>
+      <li>Generate token. Pick an app (or create one: Business type, any name). Tick:
+        <code>ads_read</code> <code>ads_management</code> <code>pages_read_engagement</code> <code>pages_manage_engagement</code> <code>pages_show_list</code> <code>instagram_basic</code> <code>instagram_manage_comments</code>. Expiry: Never.</li>
+      <li>Paste it above.</li>
+    </ol>
+    <p class="small muted">For a quick test, a user token from <a href="https://developers.facebook.com/tools/explorer" target="_blank">Graph API Explorer</a> with the same permissions also works, but expires in about two hours.</p>
+  </details>
+</div>
+
+<div id="app">
+  <header>
+    <h1>Ad comments</h1>
+    <span class="who" id="who"></span>
+    <span class="sp"></span>
+    <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="inclPaused"> Include paused ads</label>
+    <button class="sm" id="refresh" title="Reload the accounts you've already loaded">Refresh</button>
+    <button class="sm" id="disconnect">Change token</button>
+  </header>
+  <main>
+    <aside>
+      <div class="top">
+        <input type="search" id="acctQ" placeholder="Find an account…">
+        <div class="btns">
+          <button class="primary sm" id="loadAll">Load all accounts</button>
+          <span class="small muted" id="acctCount"></span>
+        </div>
+        <div class="progress" id="prog"><i></i></div>
+      </div>
+      <div class="list" id="accts"></div>
+    </aside>
+    <section>
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Search comments, people, ads, campaigns…">
+        <div class="chips">
+          <span class="chip on" data-f="all">All</span>
+          <span class="chip" data-f="ig">Instagram</span>
+          <span class="chip" data-f="fb">Facebook</span>
+          <span class="chip" data-f="spam">Likely spam</span>
+          <span class="chip" data-f="hid">Hidden</span>
+        </div>
+        <select id="sort"><option value="new">Newest first</option><option value="old">Oldest first</option></select>
+        <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="groupBy" checked> Group by ad</label>
+      </div>
+      <div class="bulk" id="bulk" style="display:none">
+        <span id="selCount"></span>
+        <button class="sm" id="bHide">Hide</button>
+        <button class="sm" id="bUnhide">Unhide</button>
+        <button class="sm danger" id="bDel">Delete</button>
+        <span id="bConfirm"></span>
+        <span class="sp"></span>
+        <button class="sm" id="bClear">Clear</button>
+      </div>
+      <div id="out"></div>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
 
 <script>
-const V = 'v23.0';
-const G = 'https://graph.facebook.com/' + V;
-const state = { token:'', accts:[], pages:{}, comments:[], loaded:{}, sel:new Set() };
-const $ = id => document.getElementById(id);
-const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const log = m => { const l=$('log'); l.textContent = (new Date().toLocaleTimeString()+' '+m+'\n'+l.textContent).slice(0,4000); };
-const setStatus = m => $('status').textContent = m;
+const V='v23.0', G='https://graph.facebook.com/'+V;
+const S={ token:'', accts:[], pages:{}, comments:[], loaded:{}, sel:new Set(), filter:'all', active:'' };
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const SPAM=/(https?:\/\/|www\.|\bdm\b|whatsapp|telegram|\+?\d[\d\s\-]{8,}\d|crypto|forex|bitcoin|earn \$|make money|investment|loan|click (the )?link|check my (page|profile|bio)|promo|giveaway|follow me|recover(y)? (funds|account)|hack)/i;
 
-try { const t = localStorage.getItem('fbtok'); if (t) $('token').value = t; } catch(e){}
-
-// ---------- API ----------
-async function api(path, params={}, method='GET', token=state.token) {
-  const u = new URL(G + path);
-  const body = new URLSearchParams();
-  for (const [k,v] of Object.entries(params)) body.set(k, typeof v==='object'?JSON.stringify(v):v);
-  body.set('access_token', token);
-  let res, json;
-  for (let attempt=0; attempt<4; attempt++) {
-    if (method==='GET') { u.search = body.toString(); res = await fetch(u); }
-    else res = await fetch(u, { method, body });
-    json = await res.json().catch(()=>({error:{message:'Bad JSON'}}));
-    if (!json.error) return json;
-    const c = json.error.code;
-    if ([4,17,32,613,80004].includes(c) && attempt<3) { log('Rate limited, waiting 30s…'); await sleep(30000); continue; }
-    throw new Error(json.error.message + (json.error.error_user_msg?' — '+json.error.error_user_msg:''));
-  }
-  throw new Error('Gave up');
+function toast(msg,bad,undo){
+  const t=document.createElement('div'); t.className='toast'+(bad?' bad':''); t.innerHTML=`<span>${esc(msg)}</span>`;
+  if(undo){const b=document.createElement('button');b.textContent='Undo';b.onclick=()=>{undo();t.remove();};t.appendChild(b);}
+  $('toasts').appendChild(t); setTimeout(()=>t.remove(),bad?7000:4500);
 }
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-async function all(path, params) { // follow paging
-  let out=[], url=null, first=true, res;
-  while (first || url) {
-    res = first ? await api(path, params) : await (await fetch(url)).json();
-    if (res.error) throw new Error(res.error.message);
-    out = out.concat(res.data||[]); url = res.paging?.next||null; first=false;
+function initialsColor(n){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))>>>0;return `hsl(${h%360} 55% 55%)`;}
+function ago(iso){ if(!iso) return ''; const d=(Date.now()-new Date(iso))/1000; if(d<60) return 'just now'; if(d<3600) return Math.floor(d/60)+'m ago'; if(d<86400) return Math.floor(d/3600)+'h ago'; if(d<86400*14) return Math.floor(d/86400)+'d ago'; return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
+
+/* ---------- API ---------- */
+async function api(path,params={},method='GET',token=S.token){
+  const u=new URL(G+path), body=new URLSearchParams();
+  for(const [k,v] of Object.entries(params)) body.set(k,typeof v==='object'?JSON.stringify(v):v);
+  body.set('access_token',token);
+  for(let a=0;a<4;a++){
+    let res; if(method==='GET'){u.search=body.toString();res=await fetch(u);} else res=await fetch(u,{method,body});
+    const j=await res.json().catch(()=>({error:{message:'Bad response from Meta'}}));
+    if(!j.error) return j;
+    if([4,17,32,613,80004].includes(j.error.code)&&a<3){toast('Meta is rate limiting, pausing 30s…');await sleep(30000);continue;}
+    throw new Error(j.error.error_user_msg||j.error.message);
+  }
+}
+async function all(path,params,tok){
+  let out=[],url=null,first=true;
+  while(first||url){
+    const r=first?await api(path,params,'GET',tok):await (await fetch(url)).json();
+    if(r.error) throw new Error(r.error.message);
+    out=out.concat(r.data||[]); url=r.paging?.next||null; first=false;
   }
   return out;
 }
-async function pool(items, n, fn) {
-  let i=0; const workers = Array.from({length:n}, async()=>{ while(i<items.length){ const it=items[i++]; try{ await fn(it);}catch(e){ log(e.message);} } });
-  await Promise.all(workers);
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const it=items[i++];try{await fn(it);}catch(e){toast(e.message,true);}}}));}
+
+/* ---------- connect ---------- */
+try{const t=localStorage.getItem('fbtok');if(t){$('token').value=t;connect();}}catch(e){}
+$('connect').onclick=connect;
+$('token').onkeydown=e=>{if(e.key==='Enter')connect();};
+async function connect(){
+  S.token=$('token').value.trim(); if(!S.token) return;
+  $('werr').textContent=''; $('connect').disabled=true; $('connect').textContent='Connecting…';
+  try{
+    const me=await api('/me',{fields:'name'});
+    S.accts=(await all('/me/adaccounts',{fields:'name,account_id',limit:200})).sort((a,b)=>a.name.localeCompare(b.name));
+    try{(await all('/me/accounts',{fields:'id,name,access_token',limit:200})).forEach(p=>S.pages[p.id]=p);}catch(e){}
+    try{localStorage.setItem('fbtok',S.token);}catch(e){}
+    $('who').textContent=`${me.name} · ${S.accts.length} ad accounts`;
+    $('welcome').style.display='none'; $('app').style.display='grid';
+    renderAccts(); render();
+  }catch(e){$('werr').textContent=e.message.includes('Session')||e.message.includes('token')?'That token didn\'t work. It may have expired, or be missing permissions.':e.message;}
+  $('connect').disabled=false; $('connect').textContent='Connect';
 }
+$('disconnect').onclick=()=>{try{localStorage.removeItem('fbtok');}catch(e){} location.reload();};
+$('refresh').onclick=async()=>{const ids=Object.keys(S.loaded).filter(k=>S.loaded[k]===true);await runLoad(ids);};
+$('inclPaused').onchange=()=>$('refresh').click();
 
-// ---------- connect ----------
-$('connect').onclick = async () => {
-  state.token = $('token').value.trim();
-  if (!state.token) return;
-  try { localStorage.setItem('fbtok', state.token); } catch(e){}
-  setStatus('Connecting…');
-  try {
-    const me = await api('/me', {fields:'name,id'});
-    const accts = await all('/me/adaccounts', {fields:'name,account_id,account_status', limit:200});
-    state.accts = accts.sort((a,b)=>a.name.localeCompare(b.name));
-    try {
-      const pages = await all('/me/accounts', {fields:'id,name,access_token', limit:200});
-      pages.forEach(p => state.pages[p.id] = p);
-      log(`${pages.length} pages with tokens`);
-    } catch(e) { log('No page tokens ('+e.message+'). FB comment actions may fail.'); }
-    setStatus(`Connected as ${me.name} · ${accts.length} ad accounts`);
-    $('loadAll').disabled = false;
-    renderAccts();
-  } catch(e) { setStatus('Error: '+e.message); }
-};
-
-function renderAccts() {
-  $('acctCount').textContent = `(${state.accts.length})`;
-  $('accts').innerHTML = state.accts.map(a => {
-    const st = state.loaded[a.id];
-    const n = st==='loading' ? '…' : st==='error' ? 'err' : st ? state.comments.filter(c=>c.acct===a.id).length : '';
-    return `<div class="acct ${st==='loading'?'loading':''}" data-id="${a.id}" title="${esc(a.name)} — click to load"><span class="n">${esc(a.name)}</span><span class="c ${st==='error'?'bad':''}">${n}</span></div>`;
-  }).join('');
-  $('fAcct').innerHTML = '<option value="">All loaded accounts</option>' + state.accts.filter(a=>state.loaded[a.id]===true).map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+/* ---------- accounts ---------- */
+function renderAccts(){
+  const q=$('acctQ').value.trim().toLowerCase();
+  const list=S.accts.filter(a=>!q||a.name.toLowerCase().includes(q));
+  const loaded=S.accts.filter(a=>S.loaded[a.id]===true).length;
+  $('acctCount').textContent=loaded?`${loaded}/${S.accts.length} loaded`:`${S.accts.length} accounts`;
+  $('accts').innerHTML=list.map(a=>{
+    const st=S.loaded[a.id];
+    let pill='';
+    if(st==='loading') pill='<span class="pill busy">…</span>';
+    else if(st==='error') pill='<span class="pill bad" title="Failed to load, click to retry">!</span>';
+    else if(st===true){const n=S.comments.filter(c=>c.acct===a.id).length;pill=`<span class="pill ${n?'ok':'zero'}">${n}</span>`;}
+    else pill='<span class="pill" title="Not loaded yet">·</span>';
+    return `<div class="acct ${S.active===a.id?'active':''}" data-id="${a.id}" title="${esc(a.name)}"><span class="n">${esc(a.name)}</span>${pill}</div>`;
+  }).join('')||'<div class="muted small" style="padding:10px">No accounts match.</div>';
 }
-$('accts').onclick = e => { const el = e.target.closest('.acct'); if (el) loadAccount(el.dataset.id); };
-$('loadAll').onclick = async () => { $('loadAll').disabled=true; await pool(state.accts.map(a=>a.id), 3, loadAccount); $('loadAll').disabled=false; };
+$('acctQ').oninput=renderAccts;
+$('accts').onclick=e=>{const el=e.target.closest('.acct');if(!el)return;const id=el.dataset.id;
+  if(S.loaded[id]===true){S.active=S.active===id?'':id;renderAccts();render();}
+  else runLoad([id]);};
+$('loadAll').onclick=()=>runLoad(S.accts.map(a=>a.id));
 
-// ---------- load comments for an account ----------
-async function loadAccount(id) {
-  const acct = state.accts.find(a=>a.id===id); if (!acct) return;
-  state.loaded[id]='loading'; renderAccts();
-  state.comments = state.comments.filter(c=>c.acct!==id);
-  try {
-    const params = { fields:'id,name,effective_status,campaign{name},adset{name},creative{id,effective_instagram_media_id,effective_object_story_id,instagram_permalink_url}', limit:200 };
-    if (!$('inclPaused').checked) params.effective_status = ['ACTIVE'];
-    const ads = await all(`/${id}/ads`, params);
-    const igMedia = {}, fbPosts = {};
-    for (const ad of ads) {
-      const cr = ad.creative||{};
-      const label = { acct:id, acctName:acct.name, ad:ad.name, campaign:ad.campaign?.name||'', adId:ad.id, link:cr.instagram_permalink_url||'' };
-      if (cr.effective_instagram_media_id) (igMedia[cr.effective_instagram_media_id] ||= []).push(label);
-      if (cr.effective_object_story_id) (fbPosts[cr.effective_object_story_id] ||= []).push(label);
-    }
-    log(`${acct.name}: ${ads.length} ads, ${Object.keys(igMedia).length} IG posts, ${Object.keys(fbPosts).length} FB posts`);
-    const found = [];
-    await pool(Object.entries(igMedia), 4, async ([mid, labels]) => {
+async function runLoad(ids){
+  if(!ids.length) return;
+  $('loadAll').disabled=true; const p=$('prog'); p.style.display='block'; let done=0; p.firstChild.style.width='0';
+  await pool(ids,3,async id=>{await loadAccount(id);done++;p.firstChild.style.width=(done/ids.length*100)+'%';});
+  setTimeout(()=>{p.style.display='none';},600); $('loadAll').disabled=false;
+  const n=S.comments.filter(c=>ids.includes(c.acct)).length;
+  toast(`${n} comment${n===1?'':'s'} across ${ids.length} account${ids.length===1?'':'s'}`);
+}
+async function loadAccount(id){
+  const acct=S.accts.find(a=>a.id===id); if(!acct) return;
+  S.loaded[id]='loading'; renderAccts();
+  try{
+    const params={fields:'id,name,campaign{name},creative{effective_instagram_media_id,effective_object_story_id,instagram_permalink_url}',limit:200};
+    if(!$('inclPaused').checked) params.effective_status=['ACTIVE'];
+    const ads=await all(`/${id}/ads`,params);
+    const ig={},fb={};
+    for(const ad of ads){const cr=ad.creative||{};const L={acct:id,acctName:acct.name,ad:ad.name,campaign:ad.campaign?.name||'',link:cr.instagram_permalink_url||''};
+      if(cr.effective_instagram_media_id)(ig[cr.effective_instagram_media_id]||=[]).push(L);
+      if(cr.effective_object_story_id)(fb[cr.effective_object_story_id]||=[]).push(L);}
+    const found=[];
+    await pool(Object.entries(ig),4,async([mid,L])=>{
       let cs;
-      try { cs = await all(`/${mid}/comments`, {fields:'id,text,username,timestamp,hidden,like_count,replies{id,text,username,timestamp,hidden}', limit:100}); }
-      catch(e) { if (/ordered/i.test(e.message)) cs = await all(`/${mid}/ordered_comments`, {fields:'id,text,username,timestamp,hidden', limit:100}); else throw new Error(labels[0].ad+': '+e.message); }
-      for (const c of cs) {
-        found.push(mk('ig', c.id, c.username, c.text, c.timestamp, c.hidden, labels, mid, false));
-        for (const r of (c.replies?.data||[])) found.push(mk('ig', r.id, r.username, r.text, r.timestamp, r.hidden, labels, mid, true));
-      }
+      try{cs=await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100});}
+      catch(e){if(/ordered/i.test(e.message))cs=await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100});else throw new Error(`${acct.name} › ${L[0].ad}: ${e.message}`);}
+      for(const c of cs){found.push(mk('ig',c.id,c.username,c.text,c.timestamp,c.hidden,L,mid,false));
+        for(const r of (c.replies?.data||[]))found.push(mk('ig',r.id,r.username,r.text,r.timestamp,r.hidden,L,mid,true));}
     });
-    await pool(Object.entries(fbPosts), 4, async ([sid, labels]) => {
-      const pageId = sid.split('_')[0];
-      const tok = state.pages[pageId]?.access_token || state.token;
-      let cs;
-      try { cs = await allTok(`/${sid}/comments`, {fields:'id,message,from{name},created_time,is_hidden,parent{id}', filter:'stream', limit:100}, tok); }
-      catch(e) { throw new Error(labels[0].ad+' (FB): '+e.message); }
-      for (const c of cs) found.push(mk('fb', c.id, c.from?.name||'(user)', c.message, c.created_time, c.is_hidden, labels, sid, !!c.parent, tok));
+    await pool(Object.entries(fb),4,async([sid,L])=>{
+      const tok=S.pages[sid.split('_')[0]]?.access_token||S.token;
+      let cs; try{cs=await all(`/${sid}/comments`,{fields:'id,message,from{name},created_time,is_hidden,parent{id}',filter:'stream',limit:100},tok);}
+      catch(e){throw new Error(`${acct.name} › ${L[0].ad} (Facebook): ${e.message}`);}
+      for(const c of cs)found.push(mk('fb',c.id,c.from?.name||'Facebook user',c.message,c.created_time,c.is_hidden,L,sid,!!c.parent,tok));
     });
-    state.comments = state.comments.concat(found).sort((a,b)=>b.when.localeCompare(a.when));
-    state.loaded[id]=true;
-  } catch(e) { state.loaded[id]='error'; log(acct.name+': '+e.message); }
+    S.comments=S.comments.filter(c=>c.acct!==id).concat(found);
+    S.loaded[id]=true;
+  }catch(e){S.loaded[id]='error';toast(`${acct.name}: ${e.message}`,true);}
   renderAccts(); render();
 }
-async function allTok(path, params, tok) {
-  let out=[], url=null, first=true, res;
-  while (first || url) {
-    res = first ? await api(path, params, 'GET', tok) : await (await fetch(url)).json();
-    if (res.error) throw new Error(res.error.message);
-    out = out.concat(res.data||[]); url = res.paging?.next||null; first=false;
-  }
-  return out;
-}
-const mk = (plat,id,user,text,when,hidden,labels,post,isReply,tok) => ({
-  plat, id, user:user||'', text:text||'', when:when||'', hidden:!!hidden, isReply, post, tok,
-  acct:labels[0].acct, acctName:labels[0].acctName, campaign:labels[0].campaign, ad:labels[0].ad, link:labels[0].link,
-  ads: labels.length>1 ? `+${labels.length-1} more ads` : ''
-});
+const mk=(plat,id,user,text,when,hidden,L,post,isReply,tok)=>({plat,id,user:user||'',text:text||'',when:when||'',hidden:!!hidden,isReply,post,tok,
+  acct:L[0].acct,acctName:L[0].acctName,campaign:L[0].campaign,ad:L[0].ad,link:L[0].link,adsN:L.length,spam:SPAM.test(text||'')});
 
-// ---------- render ----------
-function filtered() {
-  const q = $('q').value.trim().toLowerCase(), p = $('fPlat').value, h = $('fHid').value, a = $('fAcct').value;
-  return state.comments.filter(c =>
-    (!p || c.plat===p) && (!a || c.acct===a) &&
-    (!h || (h==='hid') === c.hidden) &&
-    (!q || [c.text,c.user,c.ad,c.campaign,c.acctName].join(' ').toLowerCase().includes(q)));
+/* ---------- list ---------- */
+function filtered(){
+  const q=$('q').value.trim().toLowerCase(), f=S.filter;
+  let l=S.comments.filter(c=>(!S.active||c.acct===S.active)&&
+    (f==='all'?true:f==='hid'?c.hidden:f==='spam'?c.spam:c.plat===f)&&
+    (f==='hid'||f==='spam'||!c.hidden||q||S.active)&& // default view hides hidden ones unless filtering
+    (!q||[c.text,c.user,c.ad,c.campaign,c.acctName].join(' ').toLowerCase().includes(q)));
+  const dir=$('sort').value==='new'?1:-1;
+  return l.sort((a,b)=>a.when<b.when?dir:a.when>b.when?-dir:0);
 }
-function render() {
-  const list = filtered();
-  $('count').textContent = `${list.length} of ${state.comments.length}`;
-  if (!list.length) { $('rows').innerHTML = `<tr><td colspan="6" class="empty">${state.comments.length?'No comments match.':'Nothing loaded yet. Click an account on the left.'}</td></tr>`; renderBulk(); return; }
-  $('rows').innerHTML = list.map(c => `
-    <tr class="${c.hidden?'hidden-c':''}" data-id="${c.id}">
-      <td><input type="checkbox" class="sel" ${state.sel.has(c.id)?'checked':''}></td>
-      <td><div>${esc(c.acctName)}</div><div class="meta">${esc(c.campaign)}</div><div class="meta">${esc(c.ad)} ${c.ads?`<span class="badge">${c.ads}</span>`:''}</div></td>
-      <td>${esc(c.user)}</td>
-      <td class="txt"><span class="badge ${c.plat}">${c.plat==='ig'?'Instagram':'Facebook'}</span>${c.hidden?'<span class="badge hid">hidden</span>':''}${c.isReply?'<span class="badge reply">reply</span>':''}<br>${esc(c.text)}<div class="err" id="e-${c.id}"></div><div id="r-${c.id}"></div></td>
-      <td class="meta">${c.when?new Date(c.when).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'}):''}</td>
-      <td class="act">
-        <button data-a="${c.hidden?'unhide':'hide'}">${c.hidden?'Unhide':'Hide'}</button>
-        <button data-a="reply">Reply</button>
-        <button class="danger" data-a="del">Delete</button>
-        ${c.link?`<a href="${esc(c.link)}" target="_blank" class="meta">open</a>`:''}
-      </td>
-    </tr>`).join('');
+function card(c){
+  return `<div class="card ${c.hidden?'hidden-c':''} ${c.spam?'spam':''}" data-id="${c.id}">
+    <input type="checkbox" class="sel" ${S.sel.has(c.id)?'checked':''}>
+    <div class="avatar" style="background:${initialsColor(c.user||'?')}">${esc((c.user||'?')[0].toUpperCase())}</div>
+    <div class="body">
+      <div class="top"><span class="user">${esc(c.user)}</span><span class="muted small">${ago(c.when)}</span>
+        <span class="tag ${c.plat}">${c.plat==='ig'?'Instagram':'Facebook'}</span>${c.hidden?'<span class="tag hid">Hidden</span>':''}${c.spam?'<span class="tag spam">Likely spam</span>':''}${c.isReply?'<span class="tag">Reply</span>':''}</div>
+      ${$('groupBy').checked?'':`<div class="ctx">${esc(c.acctName)} › ${esc(c.campaign)} › ${esc(c.ad)}</div>`}
+      <div class="txt">${esc(c.text)||'<span class="muted">(no text)</span>'}</div>
+      <div class="err" id="e-${c.id}"></div><div id="r-${c.id}"></div>
+    </div>
+    <div class="acts">
+      <button class="sm" data-a="${c.hidden?'unhide':'hide'}">${c.hidden?'Unhide':'Hide'}</button>
+      <button class="sm" data-a="reply">Reply</button>
+      <button class="sm danger" data-a="del">Delete</button>
+    </div></div>`;
+}
+function render(){
+  const l=filtered(), out=$('out');
+  if(!S.comments.length){out.innerHTML=`<div class="empty"><b>Nothing loaded yet</b>Click an account on the left, or "Load all accounts".</div>`;renderBulk();return;}
+  if(!l.length){out.innerHTML=`<div class="empty"><b>No comments here</b>${S.filter!=='all'||$('q').value?'Try clearing the search or filter.':'Nothing on the ads in this view.'}</div>`;renderBulk();return;}
+  if($('groupBy').checked){
+    const g={}; for(const c of l)(g[c.acct+'|'+c.post]||=[]).push(c);
+    out.innerHTML=Object.values(g).map(cs=>{const c=cs[0];return `<div class="group"><h3>${esc(c.acctName)} <span class="sub">› ${esc(c.campaign)} › ${esc(c.ad)}${c.adsN>1?` (+${c.adsN-1} ads share this post)`:''}</span><span class="pill">${cs.length}</span>${c.link?`<a class="small" href="${esc(c.link)}" target="_blank">open post</a>`:''}</h3>${cs.map(card).join('')}</div>`;}).join('');
+  } else out.innerHTML=l.map(card).join('');
   renderBulk();
 }
-function renderBulk() {
-  $('bulk').style.display = state.sel.size ? '' : 'none';
-  $('selCount').textContent = `${state.sel.size} selected`;
-}
-['q','fPlat','fHid','fAcct'].forEach(id => $(id).oninput = render);
-$('selAll').onchange = e => { filtered().forEach(c => e.target.checked ? state.sel.add(c.id) : state.sel.delete(c.id)); render(); };
-$('bClear').onclick = () => { state.sel.clear(); $('selAll').checked=false; render(); };
+function renderBulk(){$('bulk').style.display=S.sel.size?'':'none';$('selCount').textContent=`${S.sel.size} selected`;}
+$('q').oninput=render; $('sort').onchange=render; $('groupBy').onchange=render;
+document.querySelector('.chips').onclick=e=>{const ch=e.target.closest('.chip');if(!ch)return;document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on',x===ch));S.filter=ch.dataset.f;render();};
+$('bClear').onclick=()=>{S.sel.clear();render();};
 
-$('rows').onclick = async e => {
-  const tr = e.target.closest('tr'); if (!tr) return;
-  const c = state.comments.find(x=>x.id===tr.dataset.id); if (!c) return;
-  if (e.target.classList.contains('sel')) { e.target.checked ? state.sel.add(c.id) : state.sel.delete(c.id); renderBulk(); return; }
-  const a = e.target.dataset.a; if (!a) return;
-  if (a==='reply') return showReply(c);
-  if (a==='del') {
-    const box = $('e-'+c.id);
-    if (box.dataset.arm) { await doAction(c,'del'); return; }
-    box.dataset.arm='1'; box.innerHTML = `<span class="confirm">Delete this comment? <button data-a="del">Yes, delete</button></span>`;
-    setTimeout(()=>{ if (box.dataset.arm) { box.dataset.arm=''; box.innerHTML=''; } }, 6000);
-    return;
-  }
-  await doAction(c, a);
+$('out').onclick=async e=>{
+  const el=e.target.closest('.card');if(!el)return;
+  const c=S.comments.find(x=>x.id===el.dataset.id);if(!c)return;
+  if(e.target.classList.contains('sel')){e.target.checked?S.sel.add(c.id):S.sel.delete(c.id);renderBulk();return;}
+  const a=e.target.dataset.a;if(!a)return;
+  if(a==='reply')return showReply(c);
+  if(a==='del'){const b=$('e-'+c.id);if(b.dataset.arm){await act(c,'del');return;}
+    b.dataset.arm='1';b.innerHTML=`<span class="confirm">Delete permanently? <button class="sm danger" data-a="del">Yes, delete</button> <button class="sm" data-a="cancel">Cancel</button></span>`;return;}
+  if(a==='cancel'){const b=$('e-'+c.id);b.dataset.arm='';b.innerHTML='';return;}
+  await act(c,a);
 };
-function showReply(c) {
-  const box = $('r-'+c.id);
-  if (box.innerHTML) { box.innerHTML=''; return; }
-  box.innerHTML = `<div class="replybox"><textarea placeholder="Reply as the Page…"></textarea><button class="primary">Send</button></div>`;
-  box.querySelector('button').onclick = async () => {
-    const msg = box.querySelector('textarea').value.trim(); if (!msg) return;
-    try {
-      if (c.plat==='ig') await api(`/${c.id}/replies`, {message:msg}, 'POST');
-      else await api(`/${c.id}/comments`, {message:msg}, 'POST', c.tok||state.token);
-      box.innerHTML = '<span class="meta">Reply sent.</span>';
-    } catch(e) { $('e-'+c.id).textContent = e.message; }
-  };
+function showReply(c){
+  const box=$('r-'+c.id); if(box.innerHTML){box.innerHTML='';return;}
+  if(c.plat==='ig'&&!c.link){/* probably PBIA, still allow attempt */}
+  box.innerHTML=`<div class="replybox"><textarea placeholder="Reply as the Page…"></textarea><button class="primary sm">Send</button></div>`;
+  const ta=box.querySelector('textarea'); ta.focus();
+  box.querySelector('button').onclick=async()=>{const m=ta.value.trim();if(!m)return;
+    try{ if(c.plat==='ig')await api(`/${c.id}/replies`,{message:m},'POST'); else await api(`/${c.id}/comments`,{message:m},'POST',c.tok||S.token);
+      box.innerHTML='';toast('Reply sent');}
+    catch(e){$('e-'+c.id).textContent=/page-backed|not supported|permission/i.test(e.message)?'Can\'t reply here. Ads run from a Page-backed Instagram account can\'t post replies.':e.message;}};
 }
-async function doAction(c, a) {
-  const err = $('e-'+c.id); if (err) { err.textContent=''; err.dataset.arm=''; }
-  const tok = c.plat==='fb' ? (c.tok||state.token) : state.token;
-  try {
-    if (a==='del') { await api(`/${c.id}`, {}, 'DELETE', tok); state.comments = state.comments.filter(x=>x.id!==c.id); state.sel.delete(c.id); }
-    else if (a==='hide' || a==='unhide') {
-      const hide = a==='hide';
-      if (c.plat==='ig') await api(`/${c.id}`, {hide}, 'POST', tok);
-      else await api(`/${c.id}`, {is_hidden:hide}, 'POST', tok);
-      c.hidden = hide;
-    }
-    render(); renderAccts();
-  } catch(e) { const b=$('e-'+c.id); if (b) b.textContent = e.message; else log(e.message); }
+async function act(c,a,quiet){
+  const err=$('e-'+c.id);if(err){err.textContent='';err.dataset.arm='';}
+  const tok=c.plat==='fb'?(c.tok||S.token):S.token;
+  try{
+    if(a==='del'){await api(`/${c.id}`,{},'DELETE',tok);S.comments=S.comments.filter(x=>x.id!==c.id);S.sel.delete(c.id);if(!quiet)toast('Comment deleted');}
+    else{const hide=a==='hide';await api(`/${c.id}`,c.plat==='ig'?{hide}:{is_hidden:hide},'POST',tok);c.hidden=hide;
+      if(!quiet)toast(hide?'Comment hidden':'Comment unhidden',false,()=>act(c,hide?'unhide':'hide',true));}
+    render();renderAccts();return true;
+  }catch(e){const b=$('e-'+c.id);if(b)b.textContent=e.message;else toast(e.message,true);return false;}
 }
-async function bulk(a) {
-  const ids = [...state.sel]; const items = ids.map(id=>state.comments.find(c=>c.id===id)).filter(Boolean);
-  $('bConfirm').textContent = ''; let done=0;
-  await pool(items, 3, async c => { await doAction(c, a); done++; $('selCount').textContent = `${done}/${items.length}`; });
-  if (a==='del') state.sel.clear();
-  render();
+async function bulk(a){
+  const items=[...S.sel].map(id=>S.comments.find(c=>c.id===id)).filter(Boolean);
+  let ok=0,done=0; await pool(items,3,async c=>{if(await act(c,a,true))ok++;done++;$('selCount').textContent=`${done}/${items.length}…`;});
+  if(a==='del')S.sel.clear(); render();
+  toast(`${ok} of ${items.length} ${a==='del'?'deleted':a==='hide'?'hidden':'unhidden'}`,ok<items.length);
 }
-$('bHide').onclick = () => bulk('hide');
-$('bUnhide').onclick = () => bulk('unhide');
-$('bDel').onclick = () => {
-  const b = $('bConfirm');
-  if (b.dataset.arm) { b.dataset.arm=''; b.innerHTML=''; bulk('del'); return; }
-  b.dataset.arm='1'; b.innerHTML = `<span class="confirm">Delete ${state.sel.size} comments? <button id="bYes" class="danger">Yes, delete</button></span>`;
-  $('bYes').onclick = () => { b.dataset.arm=''; b.innerHTML=''; bulk('del'); };
-  setTimeout(()=>{ if (b.dataset.arm) { b.dataset.arm=''; b.innerHTML=''; } }, 8000);
-};
+$('bHide').onclick=()=>bulk('hide'); $('bUnhide').onclick=()=>bulk('unhide');
+$('bDel').onclick=()=>{const b=$('bConfirm');
+  b.innerHTML=`<span class="confirm" style="color:#fca5a5">Delete ${S.sel.size} permanently? <button class="sm danger" id="bYes">Yes, delete</button> <button class="sm" id="bNo">Cancel</button></span>`;
+  $('bYes').onclick=()=>{b.innerHTML='';bulk('del');}; $('bNo').onclick=()=>b.innerHTML='';};
 </script>
 </body>
 </html>
