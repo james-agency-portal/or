@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ad comments</title>
+<style>
+  :root{--bg:#f5f6f8;--panel:#fff;--line:#e3e5e8;--text:#1c1e21;--muted:#65676b;--blue:#1b74e4;--red:#d93025;--amber:#b45309;--green:#1a7f37;}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
+  header{display:flex;gap:10px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0 12px 0 0;font-weight:600}
+  input,select,button,textarea{font:inherit}
+  input[type=text],input[type=password],select,textarea{padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  button{padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+  button:hover{background:#f0f2f5}
+  button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}
+  button.primary:hover{background:#1660c0}
+  button.danger{color:var(--red)}
+  button.danger:hover{background:#fdecea}
+  button:disabled{opacity:.5;cursor:default}
+  .status{color:var(--muted);font-size:13px;margin-left:auto}
+  main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 56px)}
+  aside{background:var(--panel);border-right:1px solid var(--line);padding:12px;overflow:auto}
+  aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:8px 0 6px}
+  .acct{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:6px;cursor:pointer;font-size:13px}
+  .acct:hover{background:#f0f2f5}
+  .acct .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .acct .c{color:var(--muted);font-size:12px;min-width:28px;text-align:right}
+  .acct .c.bad{color:var(--red)}
+  .acct.loading .c{color:var(--blue)}
+  section{padding:12px 16px;overflow:auto}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .toolbar .grow{flex:1;min-width:200px}
+  .bulk{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#fff8e1;border:1px solid #f1e3a6;border-radius:6px;margin-bottom:10px}
+  table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+  th{font-size:12px;color:var(--muted);font-weight:600;background:#fafbfc;position:sticky;top:56px}
+  tr.hidden-c td{opacity:.55}
+  td.txt{max-width:480px;white-space:pre-wrap;word-break:break-word}
+  .meta{color:var(--muted);font-size:12px}
+  .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:10px;border:1px solid var(--line);color:var(--muted);margin-right:4px}
+  .badge.ig{border-color:#e1306c;color:#e1306c}
+  .badge.fb{border-color:var(--blue);color:var(--blue)}
+  .badge.hid{border-color:var(--amber);color:var(--amber)}
+  .badge.reply{border-color:#999;color:#777}
+  td.act{white-space:nowrap}
+  td.act button{padding:4px 8px;font-size:12px;margin-right:4px}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .err{color:var(--red);font-size:12px}
+  .replybox{margin-top:6px;display:flex;gap:6px}
+  .replybox textarea{flex:1;min-height:40px}
+  details.help{margin-top:16px;font-size:13px;color:var(--muted)}
+  details.help code{background:#eef0f3;padding:1px 4px;border-radius:3px}
+  .confirm{display:inline-flex;gap:6px;align-items:center;color:var(--red);font-size:12px}
+  a{color:var(--blue)}
+  .log{font-size:12px;color:var(--muted);max-height:120px;overflow:auto;margin-top:8px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ad comments</h1>
+  <input type="password" id="token" placeholder="Paste access token" style="width:320px">
+  <button class="primary" id="connect">Connect</button>
+  <label><input type="checkbox" id="inclPaused"> include paused ads</label>
+  <button id="loadAll" disabled>Load all accounts</button>
+  <span class="status" id="status">Not connected</span>
+</header>
+<main>
+  <aside>
+    <h2>Ad accounts <span id="acctCount"></span></h2>
+    <div id="accts"><div class="meta">Connect to list accounts.</div></div>
+    <details class="help">
+      <summary>Setup: system user token (never expires)</summary>
+      <ol>
+        <li>business.facebook.com → Settings → Users → <b>System users</b> → Add. Role: Admin.</li>
+        <li>Assign assets: every ad account (Manage) and every Page (Full control).</li>
+        <li>Generate token → pick (or create) an app → tick <code>ads_read</code>, <code>ads_management</code>, <code>pages_read_engagement</code>, <code>pages_manage_engagement</code>, <code>pages_show_list</code>, <code>instagram_basic</code>, <code>instagram_manage_comments</code>. Expiry: Never.</li>
+        <li>Paste it above. It's stored only in this browser.</li>
+      </ol>
+      <p>Short-term alternative: a user token from Graph API Explorer with the same permissions. Expires in ~2 hours.</p>
+      <p>Known gaps: Advantage+ catalog ads and Stories can't be moderated via the API. Replying on page-backed Instagram ads isn't possible.</p>
+    </details>
+    <div class="log" id="log"></div>
+  </aside>
+  <section>
+    <div class="toolbar">
+      <input type="text" id="q" class="grow" placeholder="Search comment text, user, ad, campaign…">
+      <select id="fPlat"><option value="">All platforms</option><option value="ig">Instagram</option><option value="fb">Facebook</option></select>
+      <select id="fHid"><option value="">Visible + hidden</option><option value="vis">Visible only</option><option value="hid">Hidden only</option></select>
+      <select id="fAcct"><option value="">All loaded accounts</option></select>
+      <span class="meta" id="count"></span>
+    </div>
+    <div class="bulk" id="bulk" style="display:none">
+      <span id="selCount"></span>
+      <button id="bHide">Hide</button>
+      <button id="bUnhide">Unhide</button>
+      <button class="danger" id="bDel">Delete</button>
+      <span id="bConfirm"></span>
+      <button id="bClear" style="margin-left:auto">Clear selection</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th style="width:28px"><input type="checkbox" id="selAll"></th>
+        <th>Account / ad</th>
+        <th>From</th>
+        <th>Comment</th>
+        <th>When</th>
+        <th>Actions</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="empty">Nothing loaded yet.</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const V = 'v23.0';
+const G = 'https://graph.facebook.com/' + V;
+const state = { token:'', accts:[], pages:{}, comments:[], loaded:{}, sel:new Set() };
+const $ = id => document.getElementById(id);
+const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const log = m => { const l=$('log'); l.textContent = (new Date().toLocaleTimeString()+' '+m+'\n'+l.textContent).slice(0,4000); };
+const setStatus = m => $('status').textContent = m;
+
+try { const t = localStorage.getItem('fbtok'); if (t) $('token').value = t; } catch(e){}
+
+// ---------- API ----------
+async function api(path, params={}, method='GET', token=state.token) {
+  const u = new URL(G + path);
+  const body = new URLSearchParams();
+  for (const [k,v] of Object.entries(params)) body.set(k, typeof v==='object'?JSON.stringify(v):v);
+  body.set('access_token', token);
+  let res, json;
+  for (let attempt=0; attempt<4; attempt++) {
+    if (method==='GET') { u.search = body.toString(); res = await fetch(u); }
+    else res = await fetch(u, { method, body });
+    json = await res.json().catch(()=>({error:{message:'Bad JSON'}}));
+    if (!json.error) return json;
+    const c = json.error.code;
+    if ([4,17,32,613,80004].includes(c) && attempt<3) { log('Rate limited, waiting 30s…'); await sleep(30000); continue; }
+    throw new Error(json.error.message + (json.error.error_user_msg?' — '+json.error.error_user_msg:''));
+  }
+  throw new Error('Gave up');
+}
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+async function all(path, params) { // follow paging
+  let out=[], url=null, first=true, res;
+  while (first || url) {
+    res = first ? await api(path, params) : await (await fetch(url)).json();
+    if (res.error) throw new Error(res.error.message);
+    out = out.concat(res.data||[]); url = res.paging?.next||null; first=false;
+  }
+  return out;
+}
+async function pool(items, n, fn) {
+  let i=0; const workers = Array.from({length:n}, async()=>{ while(i<items.length){ const it=items[i++]; try{ await fn(it);}catch(e){ log(e.message);} } });
+  await Promise.all(workers);
+}
+
+// ---------- connect ----------
+$('connect').onclick = async () => {
+  state.token = $('token').value.trim();
+  if (!state.token) return;
+  try { localStorage.setItem('fbtok', state.token); } catch(e){}
+  setStatus('Connecting…');
+  try {
+    const me = await api('/me', {fields:'name,id'});
+    const accts = await all('/me/adaccounts', {fields:'name,account_id,account_status', limit:200});
+    state.accts = accts.sort((a,b)=>a.name.localeCompare(b.name));
+    try {
+      const pages = await all('/me/accounts', {fields:'id,name,access_token', limit:200});
+      pages.forEach(p => state.pages[p.id] = p);
+      log(`${pages.length} pages with tokens`);
+    } catch(e) { log('No page tokens ('+e.message+'). FB comment actions may fail.'); }
+    setStatus(`Connected as ${me.name} · ${accts.length} ad accounts`);
+    $('loadAll').disabled = false;
+    renderAccts();
+  } catch(e) { setStatus('Error: '+e.message); }
+};
+
+function renderAccts() {
+  $('acctCount').textContent = `(${state.accts.length})`;
+  $('accts').innerHTML = state.accts.map(a => {
+    const st = state.loaded[a.id];
+    const n = st==='loading' ? '…' : st==='error' ? 'err' : st ? state.comments.filter(c=>c.acct===a.id).length : '';
+    return `<div class="acct ${st==='loading'?'loading':''}" data-id="${a.id}" title="${esc(a.name)} — click to load"><span class="n">${esc(a.name)}</span><span class="c ${st==='error'?'bad':''}">${n}</span></div>`;
+  }).join('');
+  $('fAcct').innerHTML = '<option value="">All loaded accounts</option>' + state.accts.filter(a=>state.loaded[a.id]===true).map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+}
+$('accts').onclick = e => { const el = e.target.closest('.acct'); if (el) loadAccount(el.dataset.id); };
+$('loadAll').onclick = async () => { $('loadAll').disabled=true; await pool(state.accts.map(a=>a.id), 3, loadAccount); $('loadAll').disabled=false; };
+
+// ---------- load comments for an account ----------
+async function loadAccount(id) {
+  const acct = state.accts.find(a=>a.id===id); if (!acct) return;
+  state.loaded[id]='loading'; renderAccts();
+  state.comments = state.comments.filter(c=>c.acct!==id);
+  try {
+    const params = { fields:'id,name,effective_status,campaign{name},adset{name},creative{id,effective_instagram_media_id,effective_object_story_id,instagram_permalink_url}', limit:200 };
+    if (!$('inclPaused').checked) params.effective_status = ['ACTIVE'];
+    const ads = await all(`/${id}/ads`, params);
+    const igMedia = {}, fbPosts = {};
+    for (const ad of ads) {
+      const cr = ad.creative||{};
+      const label = { acct:id, acctName:acct.name, ad:ad.name, campaign:ad.campaign?.name||'', adId:ad.id, link:cr.instagram_permalink_url||'' };
+      if (cr.effective_instagram_media_id) (igMedia[cr.effective_instagram_media_id] ||= []).push(label);
+      if (cr.effective_object_story_id) (fbPosts[cr.effective_object_story_id] ||= []).push(label);
+    }
+    log(`${acct.name}: ${ads.length} ads, ${Object.keys(igMedia).length} IG posts, ${Object.keys(fbPosts).length} FB posts`);
+    const found = [];
+    await pool(Object.entries(igMedia), 4, async ([mid, labels]) => {
+      let cs;
+      try { cs = await all(`/${mid}/comments`, {fields:'id,text,username,timestamp,hidden,like_count,replies{id,text,username,timestamp,hidden}', limit:100}); }
+      catch(e) { if (/ordered/i.test(e.message)) cs = await all(`/${mid}/ordered_comments`, {fields:'id,text,username,timestamp,hidden', limit:100}); else throw new Error(labels[0].ad+': '+e.message); }
+      for (const c of cs) {
+        found.push(mk('ig', c.id, c.username, c.text, c.timestamp, c.hidden, labels, mid, false));
+        for (const r of (c.replies?.data||[])) found.push(mk('ig', r.id, r.username, r.text, r.timestamp, r.hidden, labels, mid, true));
+      }
+    });
+    await pool(Object.entries(fbPosts), 4, async ([sid, labels]) => {
+      const pageId = sid.split('_')[0];
+      const tok = state.pages[pageId]?.access_token || state.token;
+      let cs;
+      try { cs = await allTok(`/${sid}/comments`, {fields:'id,message,from{name},created_time,is_hidden,parent{id}', filter:'stream', limit:100}, tok); }
+      catch(e) { throw new Error(labels[0].ad+' (FB): '+e.message); }
+      for (const c of cs) found.push(mk('fb', c.id, c.from?.name||'(user)', c.message, c.created_time, c.is_hidden, labels, sid, !!c.parent, tok));
+    });
+    state.comments = state.comments.concat(found).sort((a,b)=>b.when.localeCompare(a.when));
+    state.loaded[id]=true;
+  } catch(e) { state.loaded[id]='error'; log(acct.name+': '+e.message); }
+  renderAccts(); render();
+}
+async function allTok(path, params, tok) {
+  let out=[], url=null, first=true, res;
+  while (first || url) {
+    res = first ? await api(path, params, 'GET', tok) : await (await fetch(url)).json();
+    if (res.error) throw new Error(res.error.message);
+    out = out.concat(res.data||[]); url = res.paging?.next||null; first=false;
+  }
+  return out;
+}
+const mk = (plat,id,user,text,when,hidden,labels,post,isReply,tok) => ({
+  plat, id, user:user||'', text:text||'', when:when||'', hidden:!!hidden, isReply, post, tok,
+  acct:labels[0].acct, acctName:labels[0].acctName, campaign:labels[0].campaign, ad:labels[0].ad, link:labels[0].link,
+  ads: labels.length>1 ? `+${labels.length-1} more ads` : ''
+});
+
+// ---------- render ----------
+function filtered() {
+  const q = $('q').value.trim().toLowerCase(), p = $('fPlat').value, h = $('fHid').value, a = $('fAcct').value;
+  return state.comments.filter(c =>
+    (!p || c.plat===p) && (!a || c.acct===a) &&
+    (!h || (h==='hid') === c.hidden) &&
+    (!q || [c.text,c.user,c.ad,c.campaign,c.acctName].join(' ').toLowerCase().includes(q)));
+}
+function render() {
+  const list = filtered();
+  $('count').textContent = `${list.length} of ${state.comments.length}`;
+  if (!list.length) { $('rows').innerHTML = `<tr><td colspan="6" class="empty">${state.comments.length?'No comments match.':'Nothing loaded yet. Click an account on the left.'}</td></tr>`; renderBulk(); return; }
+  $('rows').innerHTML = list.map(c => `
+    <tr class="${c.hidden?'hidden-c':''}" data-id="${c.id}">
+      <td><input type="checkbox" class="sel" ${state.sel.has(c.id)?'checked':''}></td>
+      <td><div>${esc(c.acctName)}</div><div class="meta">${esc(c.campaign)}</div><div class="meta">${esc(c.ad)} ${c.ads?`<span class="badge">${c.ads}</span>`:''}</div></td>
+      <td>${esc(c.user)}</td>
+      <td class="txt"><span class="badge ${c.plat}">${c.plat==='ig'?'Instagram':'Facebook'}</span>${c.hidden?'<span class="badge hid">hidden</span>':''}${c.isReply?'<span class="badge reply">reply</span>':''}<br>${esc(c.text)}<div class="err" id="e-${c.id}"></div><div id="r-${c.id}"></div></td>
+      <td class="meta">${c.when?new Date(c.when).toLocaleString('en-AU',{dateStyle:'short',timeStyle:'short'}):''}</td>
+      <td class="act">
+        <button data-a="${c.hidden?'unhide':'hide'}">${c.hidden?'Unhide':'Hide'}</button>
+        <button data-a="reply">Reply</button>
+        <button class="danger" data-a="del">Delete</button>
+        ${c.link?`<a href="${esc(c.link)}" target="_blank" class="meta">open</a>`:''}
+      </td>
+    </tr>`).join('');
+  renderBulk();
+}
+function renderBulk() {
+  $('bulk').style.display = state.sel.size ? '' : 'none';
+  $('selCount').textContent = `${state.sel.size} selected`;
+}
+['q','fPlat','fHid','fAcct'].forEach(id => $(id).oninput = render);
+$('selAll').onchange = e => { filtered().forEach(c => e.target.checked ? state.sel.add(c.id) : state.sel.delete(c.id)); render(); };
+$('bClear').onclick = () => { state.sel.clear(); $('selAll').checked=false; render(); };
+
+$('rows').onclick = async e => {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  const c = state.comments.find(x=>x.id===tr.dataset.id); if (!c) return;
+  if (e.target.classList.contains('sel')) { e.target.checked ? state.sel.add(c.id) : state.sel.delete(c.id); renderBulk(); return; }
+  const a = e.target.dataset.a; if (!a) return;
+  if (a==='reply') return showReply(c);
+  if (a==='del') {
+    const box = $('e-'+c.id);
+    if (box.dataset.arm) { await doAction(c,'del'); return; }
+    box.dataset.arm='1'; box.innerHTML = `<span class="confirm">Delete this comment? <button data-a="del">Yes, delete</button></span>`;
+    setTimeout(()=>{ if (box.dataset.arm) { box.dataset.arm=''; box.innerHTML=''; } }, 6000);
+    return;
+  }
+  await doAction(c, a);
+};
+function showReply(c) {
+  const box = $('r-'+c.id);
+  if (box.innerHTML) { box.innerHTML=''; return; }
+  box.innerHTML = `<div class="replybox"><textarea placeholder="Reply as the Page…"></textarea><button class="primary">Send</button></div>`;
+  box.querySelector('button').onclick = async () => {
+    const msg = box.querySelector('textarea').value.trim(); if (!msg) return;
+    try {
+      if (c.plat==='ig') await api(`/${c.id}/replies`, {message:msg}, 'POST');
+      else await api(`/${c.id}/comments`, {message:msg}, 'POST', c.tok||state.token);
+      box.innerHTML = '<span class="meta">Reply sent.</span>';
+    } catch(e) { $('e-'+c.id).textContent = e.message; }
+  };
+}
+async function doAction(c, a) {
+  const err = $('e-'+c.id); if (err) { err.textContent=''; err.dataset.arm=''; }
+  const tok = c.plat==='fb' ? (c.tok||state.token) : state.token;
+  try {
+    if (a==='del') { await api(`/${c.id}`, {}, 'DELETE', tok); state.comments = state.comments.filter(x=>x.id!==c.id); state.sel.delete(c.id); }
+    else if (a==='hide' || a==='unhide') {
+      const hide = a==='hide';
+      if (c.plat==='ig') await api(`/${c.id}`, {hide}, 'POST', tok);
+      else await api(`/${c.id}`, {is_hidden:hide}, 'POST', tok);
+      c.hidden = hide;
+    }
+    render(); renderAccts();
+  } catch(e) { const b=$('e-'+c.id); if (b) b.textContent = e.message; else log(e.message); }
+}
+async function bulk(a) {
+  const ids = [...state.sel]; const items = ids.map(id=>state.comments.find(c=>c.id===id)).filter(Boolean);
+  $('bConfirm').textContent = ''; let done=0;
+  await pool(items, 3, async c => { await doAction(c, a); done++; $('selCount').textContent = `${done}/${items.length}`; });
+  if (a==='del') state.sel.clear();
+  render();
+}
+$('bHide').onclick = () => bulk('hide');
+$('bUnhide').onclick = () => bulk('unhide');
+$('bDel').onclick = () => {
+  const b = $('bConfirm');
+  if (b.dataset.arm) { b.dataset.arm=''; b.innerHTML=''; bulk('del'); return; }
+  b.dataset.arm='1'; b.innerHTML = `<span class="confirm">Delete ${state.sel.size} comments? <button id="bYes" class="danger">Yes, delete</button></span>`;
+  $('bYes').onclick = () => { b.dataset.arm=''; b.innerHTML=''; bulk('del'); };
+  setTimeout(()=>{ if (b.dataset.arm) { b.dataset.arm=''; b.innerHTML=''; } }, 8000);
+};
+</script>
+</body>
+</html>
