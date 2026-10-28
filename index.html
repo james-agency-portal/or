@@ -193,7 +193,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const SPAM=/(https?:\/\/|www\.|\bdm\b|whatsapp|telegram|\+?\d[\d\s\-]{8,}\d|crypto|forex|bitcoin|earn \$|make money|investment|loan|click (the )?link|check my (page|profile|bio)|promo|giveaway|follow me|recover(y)? (funds|account)|hack)/i;
 
-S.issues=[];
+S.issues=[];S.diag={};
 function toast(msg,bad,undo){
   const t=document.createElement('div'); t.className='toast'+(bad?' bad':''); t.innerHTML=`<span>${esc(msg)}</span>`;
   if(undo){const b=document.createElement('button');b.textContent='Undo';b.onclick=()=>{undo();t.remove();};t.appendChild(b);}
@@ -249,7 +249,7 @@ async function connect(){
   $('connect').disabled=false; $('connect').textContent='Connect';
 }
 $('issuesBtn').onclick=()=>$('issues').style.display='';
-$('issuesClear').onclick=()=>{S.issues=[];renderIssues();};
+$('issuesClear').onclick=()=>{S.issues=[];S.diag={};renderIssues();};
 $('issuesCopy').onclick=()=>{try{navigator.clipboard.writeText(S.issues.map(i=>i.t+' '+i.msg).join('\n'));toast('Copied');}catch(e){}};
 $('disconnect').onclick=()=>{try{localStorage.removeItem('fbtok');}catch(e){} location.reload();};
 $('refresh').onclick=async()=>{const ids=Object.keys(S.loaded).filter(k=>S.loaded[k]===true);await runLoad(ids);};
@@ -289,20 +289,22 @@ async function loadAccount(id){
   const acct=S.accts.find(a=>a.id===id); if(!acct) return;
   S.loaded[id]='loading'; renderAccts();
   try{
-    const params={fields:'id,name,campaign{name},creative{effective_instagram_media_id,effective_object_story_id,instagram_permalink_url}',limit:200};
+    const params={fields:'id,name,campaign{name},creative{effective_instagram_media_id,source_instagram_media_id,effective_object_story_id,instagram_permalink_url}',limit:200};
     if(!$('inclPaused').checked) params.effective_status=['ACTIVE'];
     const ads=await all(`/${id}/ads`,params);
     const ig={},fb={};
-    for(const ad of ads){const cr=ad.creative||{};const L={acct:id,acctName:acct.name,ad:ad.name,campaign:ad.campaign?.name||'',link:cr.instagram_permalink_url||''};
+    for(const ad of ads){const cr=ad.creative||{};const L={acct:id,acctName:acct.name,ad:ad.name,campaign:ad.campaign?.name||'',link:cr.instagram_permalink_url||'',adId:ad.id,eff:cr.effective_instagram_media_id||'',src:cr.source_instagram_media_id||''};
       if(cr.effective_instagram_media_id)(ig[cr.effective_instagram_media_id]||=[]).push(L);
+      if(cr.source_instagram_media_id&&cr.source_instagram_media_id!==cr.effective_instagram_media_id)(ig[cr.source_instagram_media_id]||=[]).push({...L,organic:true});
       if(cr.effective_object_story_id)(fb[cr.effective_object_story_id]||=[]).push(L);}
     const found=[];
     await pool(Object.entries(ig),4,async([mid,L])=>{
-      const seen=new Set(), cs=[];
+      const seen=new Set(), cs=[]; const diag={media:mid,organic:!!L[0].organic,comments:'-',ordered:'-'};
       const add=(c,isReply)=>{if(c&&c.id&&!seen.has(c.id)){seen.add(c.id);cs.push({c,isReply});}};
       let err=null;
-      try{for(const c of await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100})){add(c,false);for(const r of (c.replies?.data||[]))add(r,true);}}catch(e){err=e;}
-      try{for(const c of await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100}))add(c,false);}catch(e){if(err)throw new Error(`${acct.name} › ${L[0].ad}: ${err.message}`);}
+      try{const r=await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100});diag.comments=r.length;for(const c of r){add(c,false);for(const x of (c.replies?.data||[]))add(x,true);}}catch(e){err=e;diag.comments='err: '+e.message;}
+      try{const r=await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100});diag.ordered=r.length;for(const c of r)add(c,false);}catch(e){diag.ordered='err: '+e.message;if(err)throw new Error(`${acct.name} › ${L[0].ad}: ${err.message}`);}
+      S.diag[mid]=diag;
       for(const {c,isReply} of cs)found.push(mk('ig',c.id,c.username,c.text,c.timestamp,c.hidden,L,mid,isReply));
     });
     await pool(Object.entries(fb),4,async([sid,L])=>{
@@ -317,7 +319,7 @@ async function loadAccount(id){
   renderAccts(); render();
 }
 const mk=(plat,id,user,text,when,hidden,L,post,isReply,tok)=>({plat,id,user:user||'',text:text||'',when:when||'',hidden:!!hidden,isReply,post,tok,
-  acct:L[0].acct,acctName:L[0].acctName,campaign:L[0].campaign,ad:L[0].ad,link:L[0].link,adsN:L.length,spam:SPAM.test(text||'')});
+  acct:L[0].acct,acctName:L[0].acctName,campaign:L[0].campaign,ad:L[0].ad,link:L[0].link,adsN:L.length,adId:L[0].adId,eff:L[0].eff,src:L[0].src,spam:SPAM.test(text||'')});
 
 /* ---------- list ---------- */
 function filtered(){
@@ -351,7 +353,7 @@ function render(){
   if(!l.length){out.innerHTML=`<div class="empty"><b>No comments here</b>${S.filter!=='all'||$('q').value?'Try clearing the search or filter.':'Nothing on the ads in this view.'}</div>`;renderBulk();return;}
   if($('groupBy').checked){
     const g={}; for(const c of l)(g[c.acct+'|'+c.post]||=[]).push(c);
-    out.innerHTML=Object.values(g).map(cs=>{const c=cs[0];return `<div class="group"><h3>${esc(c.acctName)} <span class="sub">› ${esc(c.campaign)} › ${esc(c.ad)}${c.adsN>1?` (+${c.adsN-1} ads share this post)`:''}</span><span class="pill">${cs.length}</span>${c.link?`<a class="small" href="${esc(c.link)}" target="_blank">open post</a>`:''}</h3>${cs.map(card).join('')}</div>`;}).join('');
+    out.innerHTML=Object.values(g).map(cs=>{const c=cs[0];return `<div class="group"><h3>${esc(c.acctName)} <span class="sub">› ${esc(c.campaign)} › ${esc(c.ad)}${c.adsN>1?` (+${c.adsN-1} ads share this post)`:''}</span><span class="pill">${cs.length}</span>${c.link?`<a class="small" href="${esc(c.link)}" target="_blank">open post</a>`:''}<a class="small muted" href="#" data-diag="${c.post}">details</a></h3><div class="small muted" id="d-${c.post}" style="display:none;margin:-4px 0 8px"></div>${cs.map(card).join('')}</div>`;}).join('');
   } else out.innerHTML=l.map(card).join('');
   renderBulk();
 }
@@ -361,6 +363,9 @@ document.querySelector('.chips').onclick=e=>{const ch=e.target.closest('.chip');
 $('bClear').onclick=()=>{S.sel.clear();render();};
 
 $('out').onclick=async e=>{
+  if(e.target.dataset.diag){e.preventDefault();const d=S.diag[e.target.dataset.diag]||{};const box=$('d-'+e.target.dataset.diag);box.style.display=box.style.display==='none'?'':'none';
+    const L=S.comments.find(c=>c.post===e.target.dataset.diag)||{};
+    box.textContent=`media ${d.media||e.target.dataset.diag}${d.organic?' (organic source post)':''} · /comments: ${d.comments} · /ordered_comments: ${d.ordered} · ad ${L.adId||''}${L.src&&L.src!==L.eff?' · boosted from organic '+L.src:''}`;return;}
   const el=e.target.closest('.card');if(!el)return;
   const c=S.comments.find(x=>x.id===el.dataset.id);if(!c)return;
   if(e.target.classList.contains('sel')){e.target.checked?S.sel.add(c.id):S.sel.delete(c.id);renderBulk();return;}
