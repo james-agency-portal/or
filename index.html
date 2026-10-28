@@ -242,7 +242,12 @@ async function connect(){
     S.accts=(await all('/me/adaccounts',{fields:'name,account_id',limit:200})).sort((a,b)=>a.name.localeCompare(b.name));
     try{(await all('/me/accounts',{fields:'id,name,access_token',limit:200})).forEach(p=>S.pages[p.id]=p);}catch(e){}
     try{localStorage.setItem('fbtok',S.token);}catch(e){}
-    $('who').textContent=`${me.name} · ${S.accts.length} ad accounts`;
+    let perms='';try{const pr=await api('/me/permissions',{});perms=(pr.data||[]).filter(x=>x.status==='granted').map(x=>x.permission).sort().join(', ');}catch(e){perms='(could not read: '+e.message+')';}
+    const need=['ads_read','ads_management','pages_show_list','pages_read_engagement','pages_read_user_content','pages_manage_engagement','instagram_basic','instagram_manage_comments'].filter(x=>!perms.includes(x));
+    $('who').textContent=`${me.name} · ${S.accts.length} ad accounts · ${Object.keys(S.pages).length} pages`;
+    $('who').title='Token permissions: '+perms;
+    if(need.length)toast('Token is missing: '+need.join(', ')+' — regenerate it with these ticked',true);
+    S.issues.unshift({t:new Date().toLocaleTimeString(),msg:'Token permissions: '+perms+'\nPages with tokens: '+Object.values(S.pages).map(p=>p.name).join(', ')});renderIssues();
     $('welcome').style.display='none'; $('app').style.display='grid';
     renderAccts(); render();
   }catch(e){$('werr').textContent=e.message.includes('Session')||e.message.includes('token')?'That token didn\'t work. It may have expired, or be missing permissions.':e.message;}
