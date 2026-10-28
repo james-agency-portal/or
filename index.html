@@ -98,6 +98,9 @@
   .confirm{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--red)}
   .empty{padding:60px 20px;text-align:center;color:var(--muted)}
   .empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+  .issue{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;white-space:pre-wrap;word-break:break-word}
+  .toast button{margin-left:auto}
+  #toasts{max-width:420px}
   #toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;z-index:9}
   .toast{background:#111827;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.2);display:flex;gap:12px;align-items:center}
   .toast.bad{background:var(--red)}
@@ -132,6 +135,7 @@
     <span class="who" id="who"></span>
     <span class="sp"></span>
     <label class="small muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="inclPaused"> Include paused ads</label>
+    <button class="sm" id="issuesBtn" style="display:none;color:var(--red)">Issues</button>
     <button class="sm" id="refresh" title="Reload the accounts you've already loaded">Refresh</button>
     <button class="sm" id="disconnect">Change token</button>
   </header>
@@ -174,6 +178,12 @@
   </main>
 </div>
 <div id="toasts"></div>
+<div id="issues" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:#fff;max-width:720px;margin:60px auto;border-radius:12px;padding:20px;max-height:75vh;overflow:auto">
+    <div style="display:flex;align-items:center;margin-bottom:10px"><b>Issues</b><span class="sp" style="flex:1"></span><button class="sm" id="issuesCopy">Copy all</button> <button class="sm" id="issuesClear">Clear</button> <button class="sm" onclick="document.getElementById('issues').style.display='none'">Close</button></div>
+    <div id="issuesBody"></div>
+  </div>
+</div>
 
 <script>
 const V='v23.0', G='https://graph.facebook.com/'+V;
@@ -183,11 +193,16 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const SPAM=/(https?:\/\/|www\.|\bdm\b|whatsapp|telegram|\+?\d[\d\s\-]{8,}\d|crypto|forex|bitcoin|earn \$|make money|investment|loan|click (the )?link|check my (page|profile|bio)|promo|giveaway|follow me|recover(y)? (funds|account)|hack)/i;
 
+S.issues=[];
 function toast(msg,bad,undo){
   const t=document.createElement('div'); t.className='toast'+(bad?' bad':''); t.innerHTML=`<span>${esc(msg)}</span>`;
   if(undo){const b=document.createElement('button');b.textContent='Undo';b.onclick=()=>{undo();t.remove();};t.appendChild(b);}
-  $('toasts').appendChild(t); setTimeout(()=>t.remove(),bad?7000:4500);
+  if(bad){S.issues.unshift({t:new Date().toLocaleTimeString(),msg});renderIssues();const x=document.createElement('button');x.textContent='✕';x.onclick=()=>t.remove();t.appendChild(x);}
+  $('toasts').appendChild(t); if(!bad) setTimeout(()=>t.remove(),4500);
 }
+function renderIssues(){const n=S.issues.length;$('issuesBtn').style.display=n?'':'none';$('issuesBtn').textContent=`Issues (${n})`;
+  $('issuesBody').innerHTML=S.issues.map(i=>`<div class="issue"><span class="muted small">${i.t}</span> ${esc(i.msg)}</div>`).join('')||'<div class="muted">No issues.</div>';}
+
 function initialsColor(n){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))>>>0;return `hsl(${h%360} 55% 55%)`;}
 function ago(iso){ if(!iso) return ''; const d=(Date.now()-new Date(iso))/1000; if(d<60) return 'just now'; if(d<3600) return Math.floor(d/60)+'m ago'; if(d<86400) return Math.floor(d/3600)+'h ago'; if(d<86400*14) return Math.floor(d/86400)+'d ago'; return new Date(iso).toLocaleDateString('en-AU',{day:'numeric',month:'short'}); }
 
@@ -233,6 +248,9 @@ async function connect(){
   }catch(e){$('werr').textContent=e.message.includes('Session')||e.message.includes('token')?'That token didn\'t work. It may have expired, or be missing permissions.':e.message;}
   $('connect').disabled=false; $('connect').textContent='Connect';
 }
+$('issuesBtn').onclick=()=>$('issues').style.display='';
+$('issuesClear').onclick=()=>{S.issues=[];renderIssues();};
+$('issuesCopy').onclick=()=>{try{navigator.clipboard.writeText(S.issues.map(i=>i.t+' '+i.msg).join('\n'));toast('Copied');}catch(e){}};
 $('disconnect').onclick=()=>{try{localStorage.removeItem('fbtok');}catch(e){} location.reload();};
 $('refresh').onclick=async()=>{const ids=Object.keys(S.loaded).filter(k=>S.loaded[k]===true);await runLoad(ids);};
 $('inclPaused').onchange=()=>$('refresh').click();
