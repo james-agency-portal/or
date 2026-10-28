@@ -399,13 +399,15 @@ function showReply(c){
 }
 async function act(c,a,quiet){
   const err=$('e-'+c.id);if(err){err.textContent='';err.dataset.arm='';}
-  const tok=c.plat==='fb'?(c.tok||S.token):S.token;
-  try{
-    if(a==='del'){await api(`/${c.id}`,{},'DELETE',tok);S.comments=S.comments.filter(x=>x.id!==c.id);S.sel.delete(c.id);if(!quiet)toast('Comment deleted');}
-    else{const hide=a==='hide';await api(`/${c.id}`,c.plat==='ig'?{hide}:{is_hidden:hide},'POST',tok);c.hidden=hide;
-      if(!quiet)toast(hide?'Comment hidden':'Comment unhidden',false,()=>act(c,hide?'unhide':'hide',true));}
-    render();renderAccts();return true;
-  }catch(e){const b=$('e-'+c.id);if(b)b.textContent=e.message;else toast(e.message,true);return false;}
+  const ptok=S.pages[c.pageId]?.access_token;
+  const toks=c.plat==='fb'?[c.tok||S.token,S.token]:[S.token,ptok].filter(Boolean);
+  const run=async tok=>{ if(a==='del') await api(`/${c.id}`,{},'DELETE',tok); else await api(`/${c.id}`,c.plat==='ig'?{hide:a==='hide'}:{is_hidden:a==='hide'},'POST',tok); };
+  let lastErr;
+  for(const tok of [...new Set(toks)]){ try{ await run(tok); lastErr=null; break; }catch(e){ lastErr=e; } }
+  if(lastErr){const b=$('e-'+c.id);const m=lastErr.message+(c.plat==='ig'&&!ptok?' (no Page token for page '+c.pageId+')':'');if(b)b.textContent=m;else toast(m,true);return false;}
+  if(a==='del'){S.comments=S.comments.filter(x=>x.id!==c.id);S.sel.delete(c.id);if(!quiet)toast('Comment deleted');}
+  else{const hide=a==='hide';c.hidden=hide;if(!quiet)toast(hide?'Comment hidden':'Comment unhidden',false,()=>act(c,hide?'unhide':'hide',true));}
+  render();renderAccts();return true;
 }
 async function bulk(a){
   const items=[...S.sel].map(id=>S.comments.find(c=>c.id===id)).filter(Boolean);
