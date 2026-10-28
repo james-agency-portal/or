@@ -289,11 +289,11 @@ async function loadAccount(id){
   const acct=S.accts.find(a=>a.id===id); if(!acct) return;
   S.loaded[id]='loading'; renderAccts();
   try{
-    const params={fields:'id,name,campaign{name},creative{effective_instagram_media_id,source_instagram_media_id,effective_object_story_id,instagram_permalink_url}',limit:200};
+    const params={fields:'id,name,campaign{name},creative{effective_instagram_media_id,source_instagram_media_id,effective_object_story_id,instagram_permalink_url,actor_id}',limit:200};
     if(!$('inclPaused').checked) params.effective_status=['ACTIVE'];
     const ads=await all(`/${id}/ads`,params);
     const ig={},fb={};
-    for(const ad of ads){const cr=ad.creative||{};const L={acct:id,acctName:acct.name,ad:ad.name,campaign:ad.campaign?.name||'',link:cr.instagram_permalink_url||'',adId:ad.id,eff:cr.effective_instagram_media_id||'',src:cr.source_instagram_media_id||''};
+    for(const ad of ads){const cr=ad.creative||{};const L={acct:id,acctName:acct.name,ad:ad.name,campaign:ad.campaign?.name||'',link:cr.instagram_permalink_url||'',adId:ad.id,eff:cr.effective_instagram_media_id||'',src:cr.source_instagram_media_id||'',pageId:cr.actor_id||(cr.effective_object_story_id||'').split('_')[0]};
       if(cr.effective_instagram_media_id)(ig[cr.effective_instagram_media_id]||=[]).push(L);
       if(cr.source_instagram_media_id&&cr.source_instagram_media_id!==cr.effective_instagram_media_id)(ig[cr.source_instagram_media_id]||=[]).push({...L,organic:true});
       if(cr.effective_object_story_id)(fb[cr.effective_object_story_id]||=[]).push(L);}
@@ -303,7 +303,9 @@ async function loadAccount(id){
       const add=(c,isReply)=>{if(c&&c.id&&!seen.has(c.id)){seen.add(c.id);cs.push({c,isReply});}};
       let err=null;
       try{const r=await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100});diag.comments=r.length;for(const c of r){add(c,false);for(const x of (c.replies?.data||[]))add(x,true);}}catch(e){err=e;diag.comments='err: '+e.message;}
-      try{const r=await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100});diag.ordered=r.length;for(const c of r)add(c,false);}catch(e){diag.ordered='err: '+e.message;if(err)throw new Error(`${acct.name} › ${L[0].ad}: ${err.message}`);}
+      try{const r=await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100});diag.ordered=r.length;for(const c of r)add(c,false);}catch(e){diag.ordered='n/a';if(err)throw new Error(`${acct.name} › ${L[0].ad}: ${err.message}`);}
+      const ptok=S.pages[L[0].pageId]?.access_token; diag.viaPage='-';
+      if(ptok){try{const r=await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100},ptok);diag.viaPage=r.length;for(const c of r){add(c,false);for(const x of (c.replies?.data||[]))add(x,true);}}catch(e){diag.viaPage='err: '+e.message;}}
       S.diag[mid]=diag;
       for(const {c,isReply} of cs)found.push(mk('ig',c.id,c.username,c.text,c.timestamp,c.hidden,L,mid,isReply));
     });
@@ -319,7 +321,7 @@ async function loadAccount(id){
   renderAccts(); render();
 }
 const mk=(plat,id,user,text,when,hidden,L,post,isReply,tok)=>({plat,id,user:user||'',text:text||'',when:when||'',hidden:!!hidden,isReply,post,tok,
-  acct:L[0].acct,acctName:L[0].acctName,campaign:L[0].campaign,ad:L[0].ad,link:L[0].link,adsN:L.length,adId:L[0].adId,eff:L[0].eff,src:L[0].src,spam:SPAM.test(text||'')});
+  acct:L[0].acct,acctName:L[0].acctName,campaign:L[0].campaign,ad:L[0].ad,link:L[0].link,adsN:L.length,adId:L[0].adId,eff:L[0].eff,src:L[0].src,pageId:L[0].pageId,spam:SPAM.test(text||'')});
 
 /* ---------- list ---------- */
 function filtered(){
@@ -353,7 +355,7 @@ function render(){
   if(!l.length){out.innerHTML=`<div class="empty"><b>No comments here</b>${S.filter!=='all'||$('q').value?'Try clearing the search or filter.':'Nothing on the ads in this view.'}</div>`;renderBulk();return;}
   if($('groupBy').checked){
     const g={}; for(const c of l)(g[c.acct+'|'+c.post]||=[]).push(c);
-    out.innerHTML=Object.values(g).map(cs=>{const c=cs[0];return `<div class="group"><h3>${esc(c.acctName)} <span class="sub">› ${esc(c.campaign)} › ${esc(c.ad)}${c.adsN>1?` (+${c.adsN-1} ads share this post)`:''}</span><span class="pill">${cs.length}</span>${c.link?`<a class="small" href="${esc(c.link)}" target="_blank">open post</a>`:''}<a class="small muted" href="#" data-diag="${c.post}">details</a></h3><div class="small muted" id="d-${c.post}" style="display:none;margin:-4px 0 8px"></div>${cs.map(card).join('')}</div>`;}).join('');
+    out.innerHTML=Object.values(g).map(cs=>{const c=cs[0];return `<div class="group"><h3>${esc(c.acctName)} <span class="sub">› ${esc(c.campaign)} › ${esc(c.ad)}${c.adsN>1?` (+${c.adsN-1} ads share this post)`:''}</span><span class="pill">${cs.length}</span>${c.link?`<a class="small" href="${esc(c.link)}" target="_blank">open post</a>`:''}${c.plat==='ig'?`<button class="sm" data-toggle="${c.post}" data-acct="${c.acct}" title="Disable comments on this post. Hides every comment, including ones Meta filters that the API can't see.">Turn off comments</button>`:''}<a class="small muted" href="#" data-diag="${c.post}">details</a></h3><div class="small muted" id="d-${c.post}" style="display:none;margin:-4px 0 8px"></div>${cs.map(card).join('')}</div>`;}).join('');
   } else out.innerHTML=l.map(card).join('');
   renderBulk();
 }
@@ -363,9 +365,18 @@ document.querySelector('.chips').onclick=e=>{const ch=e.target.closest('.chip');
 $('bClear').onclick=()=>{S.sel.clear();render();};
 
 $('out').onclick=async e=>{
+  if(e.target.dataset.toggle){const mid=e.target.dataset.toggle,btn=e.target;
+    if(!btn.dataset.arm){btn.dataset.arm='1';btn.textContent='Confirm: turn off comments';setTimeout(()=>{btn.dataset.arm='';btn.textContent='Turn off comments';},6000);return;}
+    btn.disabled=true;
+    try{await api(`/${mid}`,{comment_enabled:false},'POST');btn.textContent='Comments off';toast('Comments turned off on that post');}
+    catch(e){btn.disabled=false;btn.dataset.arm='';btn.textContent='Turn off comments';
+      const L=S.comments.find(c=>c.post===mid);const ptok=L&&S.pages[L.pageId]?.access_token;
+      if(ptok){try{await api(`/${mid}`,{comment_enabled:false},'POST',ptok);btn.textContent='Comments off';btn.disabled=true;toast('Comments turned off on that post');return;}catch(e2){toast('Turn off comments failed: '+e2.message,true);return;}}
+      toast('Turn off comments failed: '+e.message,true);}
+    return;}
   if(e.target.dataset.diag){e.preventDefault();const d=S.diag[e.target.dataset.diag]||{};const box=$('d-'+e.target.dataset.diag);box.style.display=box.style.display==='none'?'':'none';
     const L=S.comments.find(c=>c.post===e.target.dataset.diag)||{};
-    box.textContent=`media ${d.media||e.target.dataset.diag}${d.organic?' (organic source post)':''} · /comments: ${d.comments} · /ordered_comments: ${d.ordered} · ad ${L.adId||''}${L.src&&L.src!==L.eff?' · boosted from organic '+L.src:''}`;return;}
+    box.textContent=`media ${d.media||e.target.dataset.diag}${d.organic?' (organic source post)':''} · /comments: ${d.comments} · ordered: ${d.ordered} · via page token: ${d.viaPage} · ad ${L.adId||''}${L.src&&L.src!==L.eff?' · boosted from organic '+L.src:''}`;return;}
   const el=e.target.closest('.card');if(!el)return;
   const c=S.comments.find(x=>x.id===el.dataset.id);if(!c)return;
   if(e.target.classList.contains('sel')){e.target.checked?S.sel.add(c.id):S.sel.delete(c.id);renderBulk();return;}
