@@ -298,11 +298,12 @@ async function loadAccount(id){
       if(cr.effective_object_story_id)(fb[cr.effective_object_story_id]||=[]).push(L);}
     const found=[];
     await pool(Object.entries(ig),4,async([mid,L])=>{
-      let cs;
-      try{cs=await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100});}
-      catch(e){if(/ordered/i.test(e.message))cs=await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100});else throw new Error(`${acct.name} › ${L[0].ad}: ${e.message}`);}
-      for(const c of cs){found.push(mk('ig',c.id,c.username,c.text,c.timestamp,c.hidden,L,mid,false));
-        for(const r of (c.replies?.data||[]))found.push(mk('ig',r.id,r.username,r.text,r.timestamp,r.hidden,L,mid,true));}
+      const seen=new Set(), cs=[];
+      const add=(c,isReply)=>{if(c&&c.id&&!seen.has(c.id)){seen.add(c.id);cs.push({c,isReply});}};
+      let err=null;
+      try{for(const c of await all(`/${mid}/comments`,{fields:'id,text,username,timestamp,hidden,replies{id,text,username,timestamp,hidden}',limit:100})){add(c,false);for(const r of (c.replies?.data||[]))add(r,true);}}catch(e){err=e;}
+      try{for(const c of await all(`/${mid}/ordered_comments`,{fields:'id,text,username,timestamp,hidden',limit:100}))add(c,false);}catch(e){if(err)throw new Error(`${acct.name} › ${L[0].ad}: ${err.message}`);}
+      for(const {c,isReply} of cs)found.push(mk('ig',c.id,c.username,c.text,c.timestamp,c.hidden,L,mid,isReply));
     });
     await pool(Object.entries(fb),4,async([sid,L])=>{
       const tok=S.pages[sid.split('_')[0]]?.access_token||S.token;
@@ -323,7 +324,6 @@ function filtered(){
   const q=$('q').value.trim().toLowerCase(), f=S.filter;
   let l=S.comments.filter(c=>(!S.active||c.acct===S.active)&&
     (f==='all'?true:f==='hid'?c.hidden:f==='spam'?c.spam:c.plat===f)&&
-    (f==='hid'||f==='spam'||!c.hidden||q||S.active)&& // default view hides hidden ones unless filtering
     (!q||[c.text,c.user,c.ad,c.campaign,c.acctName].join(' ').toLowerCase().includes(q)));
   const dir=$('sort').value==='new'?1:-1;
   return l.sort((a,b)=>a.when<b.when?dir:a.when>b.when?-dir:0);
