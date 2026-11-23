@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Billing overview</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#1D9E75;--green-light:#E1F5EE;--amber:#BA7517;--amber-light:#FAEEDA;--border:#e8e7e2;--bg:#f5f4f0;--white:#fff;--text:#1a1a1a;--muted:#888;--danger:#A32D2D;--danger-light:#FCEBEB;--blue:#378ADD;--radius:12px;--font:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased}
+button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
+.wrap{max-width:1180px;margin:0 auto;padding:1.25rem 1rem 4rem}
+
+.header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:1rem}
+.header-left{display:flex;align-items:center;gap:14px;min-width:0}
+.logo{height:18px;width:auto;flex-shrink:0}
+.board-name{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.header-right{display:flex;align-items:center;gap:8px}
+.stamp{font-size:11px;color:var(--muted)}
+.btn{font-size:12px;font-weight:500;padding:6px 14px;border-radius:8px;cursor:pointer;background:var(--white);border:0.5px solid var(--border);color:var(--text);transition:all .15s}
+.btn:hover{background:var(--bg)}
+.btn-primary{background:var(--text);color:#fff;border-color:var(--text)}
+.btn-primary:hover{background:#333}
+
+.cat-tabs{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
+.cat-tab{font-size:12px;font-weight:500;padding:6px 14px;border-radius:99px;border:0.5px solid var(--border);background:var(--white);cursor:pointer;color:var(--muted);transition:all .15s;display:inline-flex;align-items:center;gap:7px}
+.cat-tab.active{background:var(--text);color:#fff;border-color:var(--text)}
+.cat-tab:hover:not(.active){background:var(--bg)}
+.sdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block}
+.tab-count{font-size:11px;opacity:.65}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:1rem}
+.card{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.card-lbl{font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.card-val{font-size:22px;font-weight:600;letter-spacing:-.01em}
+.card-sub{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.45}
+.card.good{background:var(--green-light);border-color:#9FD9C4}
+.card.good .card-val{color:#0F6E56}
+.card.bad{background:var(--danger-light);border-color:#F09595}
+.card.bad .card-val{color:var(--danger)}
+.card.good .card-sub,.card.bad .card-sub{color:#444}
+.prog-bar{background:var(--border);border-radius:99px;height:4px;overflow:hidden;margin-top:8px}
+.prog-fill{height:100%;background:var(--green);border-radius:99px}
+.prog-fill.over{background:var(--danger)}
+
+.panel{background:var(--white);border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:.75rem;overflow:hidden}
+.panel-head{display:flex;align-items:center;gap:10px;padding:12px 16px;flex-wrap:wrap}
+.panel-title{font-size:14px;font-weight:500;flex:1;display:flex;align-items:center;gap:9px;min-width:160px}
+.panel-title.link{cursor:pointer}
+.panel-title.link:hover{text-decoration:underline}
+.panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
+.seg{display:inline-flex;border:0.5px solid var(--border);border-radius:8px;overflow:hidden}
+.seg button{font-size:12px;font-weight:500;padding:5px 12px;border:none;background:var(--white);color:var(--muted);cursor:pointer}
+.seg button.active{background:var(--text);color:#fff}
+
+.tbl-scroll{overflow-x:auto;border-top:0.5px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);text-align:right;padding:9px 12px;white-space:nowrap;background:#fafaf8}
+th:first-child,td:first-child{text-align:left;padding-left:16px}
+th.rec,td.rec{background:#F3FAF7}
+th.rec{color:#0F6E56}
+td{padding:10px 12px;border-top:0.5px solid var(--border);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.name{white-space:normal;min-width:240px;max-width:380px;line-height:1.4}
+td.name a{color:var(--text);text-decoration:none;cursor:pointer}
+td.name a:hover{text-decoration:underline}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:#fafaf8}
+tr.phantom td{color:var(--muted);font-style:italic}
+tfoot td{font-weight:600;background:#fafaf8}
+.sub{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.pill{font-size:11px;font-weight:500;border-radius:99px;padding:2px 9px;white-space:nowrap;display:inline-block;background:var(--bg);color:var(--muted)}
+.pill.active{background:var(--green-light);color:var(--green)}
+.pill.done{background:#EEE9F8;color:#6B4BB0}
+.pill.warn{background:var(--amber-light);color:#633806}
+.up{color:#0F6E56;font-weight:500}
+.down{color:var(--danger);font-weight:500}
+.flat{color:var(--muted)}
+.lock{font-size:10.5px;color:var(--muted);display:block;margin-top:1px}
+
+.planner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 16px;font-size:13px;border-top:0.5px solid var(--border);background:#fafaf8}
+.planner input{width:84px;padding:5px 8px;border:0.5px solid var(--border);border-radius:6px;background:var(--white);outline:none;text-align:right}
+.planner input:focus{border-color:var(--green)}
+.planner .result{margin-left:auto;color:#0F6E56;font-weight:500}
+
+.settings{padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;border-top:0.5px solid var(--border)}
+.settings label{font-size:11px;color:var(--muted);display:block;margin-bottom:4px}
+.settings input{width:100%;padding:7px 10px;border:0.5px solid var(--border);border-radius:8px;outline:none;background:var(--white)}
+.settings input:focus{border-color:var(--green)}
+.settings-actions{padding:0 16px 14px;display:flex;gap:8px;align-items:center}
+
+.warning{background:var(--amber-light);border:0.5px solid #EF9F27;border-radius:8px;padding:10px 14px;margin-bottom:1rem;font-size:12px;color:#633806;line-height:1.5}
+.empty{text-align:center;padding:2rem 1rem;color:var(--muted);font-size:13px}
+.error-state{text-align:center;padding:3rem 1rem;color:var(--danger)}
+.error-icon{font-size:28px;margin-bottom:.75rem}
+.error-state p{font-size:13px;line-height:1.6}
+.error-sub{color:var(--muted);margin-top:4px}
+.loading{text-align:center;padding:3rem 1rem;color:var(--muted);font-size:13px}
+.spinner{width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 1rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"><div class="loading"><div class="spinner"></div><p>Loading board…</p></div></div>
+
+<template id="logo"><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 206 35.901"><g transform="translate(-118.645 -377.753)"><path d="M412.081,405.455l-.151.3a5.493,5.493,0,0,1-5.261,3.37c-2.832,0-4.592-2.912-4.592-7.6,0-5,1.363-7.978,3.648-7.978.958,0,1.685.35,1.834.875a4.224,4.224,0,0,1-.312.793,5.31,5.31,0,0,0-.624,2.163,2.49,2.49,0,0,0,.883,1.949,2.429,2.429,0,0,0,1.77.582,2.61,2.61,0,0,0,2.816-2.677c0-2.175-1.668-4.714-6.367-4.714-5.912,0-9,4.7-9,9.343,0,5.921,3.282,9.456,8.778,9.456a8.408,8.408,0,0,0,7.391-5.034l.115-.244Z" transform="translate(-107.831 -5.727)" fill="#f93853"/><path d="M435.867,393.319v.792l.257.042c.8.13,2.682.435,2.683.988a4.724,4.724,0,0,1-.283,1.238c-1.057,2.817-2.47,6.5-3.422,8.834l-.284-.609c-1.361-2.92-3.638-7.808-4.163-9.182a4.217,4.217,0,0,1-.234-.688c.047-.137.553-.4,1.965-.463l.293-.013v-.939h-9.8v.858l.288.017a2.657,2.657,0,0,1,2.3,1.664c.443.991,1.246,2.709,2.176,4.7,1.681,3.6,3.769,8.064,4.966,10.884-.858,2.285-2.657,5.981-4.454,6.757l.04-.237a13.893,13.893,0,0,0,.23-1.7c0-.081,0-.162-.009-.241a2.462,2.462,0,0,0-2.639-2.255,2.777,2.777,0,0,0-2.709,2.755,3.225,3.225,0,0,0,3.356,3.169c3.042,0,4.968-2.11,7.363-8.064l.869-2.2c1.6-4.06,4.284-10.857,5.35-13.4a2.758,2.758,0,0,1,2.338-1.865l.276-.028v-.809Z" transform="translate(-117.974 -6.036)" fill="#f93853"/><path d="M199.23,409.863a1.49,1.49,0,0,1-.842-1.467V399.37c0-4.18-1.861-6.482-5.239-6.482-2.824,0-4.3,1.5-5.609,2.821-.147.149-.293.3-.44.441a5.272,5.272,0,0,0-4.949-3.263c-2.849,0-4.31,1.505-5.6,2.833l-.308.316V393.52l-.377-.378-5.77.447v.744l.271.032a4.24,4.24,0,0,1,1.837.674,1.79,1.79,0,0,1,.868,1.507l0,12.046a1.342,1.342,0,0,1-.838,1.4,5.068,5.068,0,0,1-1.565.213l-.312-.005v.769h8.933v-.757l-.3-.006a4.593,4.593,0,0,1-1.767-.389,1.568,1.568,0,0,1-.946-1.49V397.465a5.681,5.681,0,0,1,4.7-2.646c1.5,0,3.123,1.165,3.123,3.723v10.044a1.332,1.332,0,0,1-.98,1.409,6.052,6.052,0,0,1-1.506.215l-.3,0v.758h8.894v-.757l-.3-.005a4.589,4.589,0,0,1-1.693-.353,1.493,1.493,0,0,1-.9-1.487V397.434a5.6,5.6,0,0,1,4.7-2.615c1.5,0,3.123,1.165,3.123,3.723v10.044a1.331,1.331,0,0,1-.975,1.408,7.069,7.069,0,0,1-1.624.216l-.3,0v.758h9.009v-.754l-.3-.009A5.192,5.192,0,0,1,199.23,409.863Z" transform="translate(-19.952 -5.869)" fill="#f93853"/><path d="M158.416,406.312c-.118,1.3-.508,2.844-1.692,2.844-.324,0-1.313,0-1.313-1.953,0-.471.028-1.33.061-2.392.054-1.692.127-4.01.127-6.043,0-4.878-2.53-5.877-6.33-5.877-2.816,0-5.954,1.765-5.954,4.3,0,1.261.622,2.076,1.585,2.076a1.933,1.933,0,0,0,2.152-1.737c0-.382-.085-1.061-.167-1.717-.053-.422-.1-.823-.126-1.108a3.171,3.171,0,0,1,2.434-.937c2.16,0,3.082,1.114,3.082,3.728l.036,2.375a27.755,27.755,0,0,1-3.788,1.486c-.767.262-1.559.533-2.3.819-1.881.715-3.888,1.755-3.888,5.068,0,2.533,1.763,4.109,4.6,4.112a7.734,7.734,0,0,0,5.526-2.4,3.269,3.269,0,0,0,3.244,2.325c2.155,0,3.247-1.515,3.542-4.911l.029-.333h-.839Zm-12.606.478c0-2.4,1.2-3.756,4.439-5.011.3-.121.612-.24.935-.365.359-.138.733-.282,1.121-.439l-.14,6.867a4.9,4.9,0,0,1-3.875,1.955C146.24,409.8,145.81,408.162,145.81,406.79Z" transform="translate(-9.186 -5.87)" fill="#f93853"/><path d="M131.552,377.757h0a2.375,2.375,0,0,0-2.206,2.348,2.292,2.292,0,0,0,2.251,2.218,2.357,2.357,0,0,0,1.65-.759,2.394,2.394,0,0,0,.626-1.763A2.192,2.192,0,0,0,131.552,377.757Z" transform="translate(-4.149 0)" fill="#f93853"/><path d="M122.146,393.748v.718l.278.026a10.586,10.586,0,0,1,2.963.717,2.221,2.221,0,0,1,.864,1.727v13.781c0,6.548-1,7.79-2.86,7.79a2.832,2.832,0,0,1-.653-.08,3.076,3.076,0,0,1,.154-.789,3.385,3.385,0,0,0,.167-.9,1.982,1.982,0,0,0-2.184-1.962,2.223,2.222,0,0,0-2.23,2.038c0,1.591,1.6,2.792,3.73,2.793,1.763,0,2.973-.585,4.627-2.239,1.7-1.735,2.46-4.2,2.46-8.008V393.686l-.376-.376Z" transform="translate(0 -6.033)" fill="#f93853"/><path d="M291.12,405.511l-1.027,0-.013.292c-.063,1.472-.608,3.057-1.653,3.057-.883,0-1.275-1.115-1.275-1.539,0-.463.032-1.349.072-2.472.065-1.814.154-4.3.154-6.414,0-5.46-3.555-5.917-7.2-5.917-3.255,0-6.9,1.854-6.895,4.309a2.381,2.381,0,0,0,2.451,2.592c1.737,0,2.9-1.131,2.9-2.189a7.664,7.664,0,0,0-.335-1.844,8.513,8.513,0,0,1-.257-1.17,2.4,2.4,0,0,1,1.906-.709c1.6,0,2.405,1.277,2.405,3.8v2.419a21.2,21.2,0,0,1-3.3,1.171c-.935.283-1.9.575-2.793.907-1.966.75-3.888,1.763-3.888,5.106,0,2.6,1.969,4.409,4.781,4.409l.149,0a7.154,7.154,0,0,0,5.3-2.371,3.972,3.972,0,0,0,3.934,2.3c2.865,0,4.4-1.821,4.561-5.413Zm-13.53.608c0-2.888,1.616-4.07,4.8-5.213l-.14,6.849a3.128,3.128,0,0,1-2.707,1.333C277.844,409.088,277.59,407.228,277.59,406.119Z" transform="translate(-59.615 -5.727)" fill="#f93853"/><path d="M236.072,406.363c-1.463,2.348-2.582,3.4-5.35,3.4-4.991,0-5.53-5.842-5.53-8.354v-.07h11.3v-.57c0-5.078-2.489-7.874-7.009-7.874-5.065,0-7.8,4.7-7.8,9.117,0,6.888,4.242,9.344,8.213,9.346a7.531,7.531,0,0,0,6.9-4.582l.119-.251-.684-.412Zm-3.022-6.038H225.2c.173-4.093,1.788-6.525,4.352-6.525C231.92,393.8,233,395.815,233.05,400.324Z" transform="translate(-39.954 -5.869)" fill="#f93853"/><path d="M317.052,392.539c.161.961.573,2.06,1.912,2.2l.306.018a2.046,2.046,0,0,0,2.038-2.27,2.209,2.209,0,0,0-2.184-2.185h0c-1.758,0-2.832.879-3.945,2.31a14.989,14.989,0,0,0-4.829-.954c-3.764,0-7.574,2.045-7.574,5.954,0,2.263,1.486,4.093,4.2,5.2-1.387.459-3.3,1.3-3.3,3.275,0,1.557,1.174,2.766,3.409,3.532-3.34.346-5.367,1.815-5.367,3.961,0,3.277,2.966,4.939,8.815,4.939,6.322,0,10.1-2.522,10.1-6.744a5.555,5.555,0,0,0-5.3-5.579l-4.522-.226-.542-.018c-1.963-.059-3.155-.178-3.155-1.333,0-.5.41-.84.871-1.125h2.626c3.519,0,7.159-2.129,7.159-5.688a5.7,5.7,0,0,0-2.008-4.459A2.2,2.2,0,0,1,317.052,392.539Zm-8.361,17.848c2.972,0,5.49.111,6.251.219a2.41,2.41,0,0,1,1.725,2.375c0,2.741-2.112,4.513-5.38,4.513-3.939,0-5.342-1.943-5.342-3.761C305.945,411.935,306.793,410.9,308.691,410.387Zm-.864-12.846c0-3.22.81-4.853,2.406-4.853h.05c2.358.054,2.543,3.809,2.543,4.965,0,1.471-.249,4.89-2.555,4.89C308.066,402.544,307.827,399.045,307.827,397.541Z" transform="translate(-70.991 -4.868)" fill="#f93853"/><path d="M348.954,405.816c-1.384,2.431-2.944,3.422-5.382,3.422-3.372,0-5.082-2.71-5.082-8.053v-.522h11v-.607c0-4.718-2.873-7.535-7.687-7.535-5.639,0-8.59,4.681-8.59,9.305,0,5.856,3.421,9.494,8.932,9.494a8.578,8.578,0,0,0,7.693-5l.108-.236-.825-.555ZM338.5,399.633c.171-3.654,1.419-6.086,3.146-6.086s2.555,1.915,2.593,6.019Z" transform="translate(-83.202 -5.727)" fill="#f93853"/><path d="M256.046,400.144l-.472-.152c-2.846-.912-4.024-1.289-4.024-3.21a2.934,2.934,0,0,1,3.2-3c2.487,0,4.5,2.249,5.012,4.424l.056.236h.754l-.3-5.62h-.612l-.651,1.062a8.4,8.4,0,0,0-4.017-1.024h-.056c-3.239,0-5.5,2.093-5.5,5.088,0,3.585,2.654,4.714,5.373,5.564,3.141.969,4.453,1.651,4.453,3.36,0,2.308-1.476,3.686-3.948,3.686-2.922,0-4.919-2.843-5.539-5.484l-.055-.236h-.748l.209,6.261h.618l.642-1.049a9.44,9.44,0,0,0,4.722,1.387c3.6,0,6.217-2.314,6.217-5.5C261.378,402.37,258.816,401.045,256.046,400.144Z" transform="translate(-50.536 -5.843)" fill="#f93853"/><path d="M380.806,409.679c-.512-.228-.722-.637-.722-1.414v-9.49c0-4.033-1.928-6.255-5.427-6.255a7.326,7.326,0,0,0-5.757,2.762v-2.169l-.338-.338-7.429.44v.809l.294.012a3.952,3.952,0,0,1,1.705.462,2.188,2.188,0,0,1,.825,1.755v12.166c0,.744-.222,1.118-.759,1.287a6.3,6.3,0,0,1-1.545.252l-.294.011v.864h10.025v-.877h-.308a3.661,3.661,0,0,1-1.532-.314c-.277-.121-.645-.4-.645-1.414v-11.36a4.176,4.176,0,0,1,3.724-1.9c1.2,0,2.48.909,2.48,3.46V408.3c0,1.051-.334,1.3-.608,1.4a6.3,6.3,0,0,1-1.545.252l-.3.01v.864h9.987l.006-.878-.31,0A4.111,4.111,0,0,1,380.806,409.679Z" transform="translate(-94.031 -5.727)" fill="#f93853"/></g></svg></template>
+
+<script src="https://cdn.jsdelivr.net/npm/monday-sdk-js@0.5.5/dist/main.js"></script>
+<script>
+(function () {
+"use strict";
+
+/* ---------- settings ---------- */
+
+var DEFAULTS = {
+  feePerCampaign: 500,      // management fee charged per campaign
+  feeCap: 1500,             // most management we take per group, however many campaigns run
+  spendBoardId: "18424974331" // board with live Meta spend, matched to this board by campaign name
+};
+var SETTINGS_KEY = "billing-view-settings-v1";
+
+function loadSettings() {
+  try { return Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}")); }
+  catch (e) { return Object.assign({}, DEFAULTS); }
+}
+function saveSettings(s) { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch (e) {} }
+
+/* Column titles we look for (case-insensitive). First match wins. */
+var COLS = {
+  paid:    ["amount paid", "total paid", "paid"],
+  adspend: ["total adspend budget", "adspend budget", "total budget this billing period", "adspend"],
+  status:  ["status", "campaign status"],
+  start:   ["start date", "billing period start"],
+  end:     ["end date", "billing period end"]
+};
+var SPEND_COLS = {
+  spent: ["total adspend this billing period"],
+  daily: ["meta daily spend"]
+};
+var FINISHED = ["finished", "closed"];
+
+/* ---------- state ---------- */
+
+var state = {
+  settings: loadSettings(),
+  boardId: null,
+  board: null,        // { name, groups:[{id,title,color}], items:[...] }
+  spendNote: null,
+  tab: "all",
+  mode: "even",       // "even" | "weighted"
+  plan: {},           // groupId -> { count, paid }
+  showSettings: false,
+  loading: true,
+  error: null,
+  loadedAt: null
+};
+
+var root = document.getElementById("root");
+var LOGO = document.getElementById("logo").innerHTML;
+var demo = /[?&]demo=1/.test(location.search);
+var monday = (!demo && window.mondaySdk) ? window.mondaySdk() : null;
+
+/* ---------- helpers ---------- */
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function num(v) {
+  if (v == null || v === "") return null;
+  var n = parseFloat(String(v).replace(/[^0-9.\-]/g, ""));
+  return isFinite(n) ? n : null;
+}
+function money(n) {
+  if (n == null || !isFinite(n)) return "–";
+  var r = Math.round(n * 100) / 100;
+  var neg = r < 0; r = Math.abs(r);
+  var whole = Math.abs(r - Math.round(r)) < 0.005;
+  var s = r.toLocaleString("en-AU", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
+  return (neg ? "-$" : "$") + s;
+}
+function signed(n) {
+  if (Math.abs(n) < 0.005) return '<span class="flat">no change</span>';
+  return n > 0 ? '<span class="up">+' + money(n) + '</span>' : '<span class="down">' + money(n) + '</span>';
+}
+function norm(s) { return String(s || "").toLowerCase().replace(/\s+/g, " ").trim(); }
+function findCol(columns, titles) {
+  for (var i = 0; i < titles.length; i++) {
+    for (var j = 0; j < columns.length; j++) {
+      if (norm(columns[j].title) === titles[i]) return columns[j].id;
+    }
+  }
+  return null;
+}
+function today() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function parseDate(s) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || "");
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+function shortDate(d) { return d ? d.toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : ""; }
+function daysLeft(it) {
+  if (!it.end) return null;
+  var from = today();
+  if (it.start && it.start > from) from = it.start;
+  return Math.round((it.end - from) / 86400000) + 1;
+}
+function isFinished(it) { return FINISHED.indexOf(norm(it.status)) !== -1; }
+
+/* ---------- monday data ---------- */
+
+function api(query, variables) {
+  return monday.api(query, { variables: variables || {} }).then(function (res) {
+    if (res && res.errors && res.errors.length) throw new Error(res.errors[0].message || "monday API error");
+    if (res && res.error_message) throw new Error(res.error_message);
+    return res.data;
+  });
+}
+
+function fetchAllItems(boardId, columnIds) {
+  var fields = "id name group { id } column_values(ids: $cols) { id text }";
+  var first = "query ($b: [ID!], $cols: [String!]) { boards(ids: $b) { items_page(limit: 500) { cursor items { " + fields + " } } } }";
+  var next = "query ($c: String!, $cols: [String!]) { next_items_page(limit: 500, cursor: $c) { cursor items { " + fields + " } } }";
+  var out = [];
+  function more(page) {
+    out = out.concat(page.items || []);
+    if (!page.cursor) return out;
+    return api(next, { c: page.cursor, cols: columnIds }).then(function (d) { return more(d.next_items_page); });
+  }
+  return api(first, { b: [String(boardId)], cols: columnIds }).then(function (d) {
+    var b = d.boards && d.boards[0];
+    if (!b) throw new Error("Board " + boardId + " not found");
+    return more(b.items_page);
+  });
+}
+
+function fetchMeta(boardId) {
+  return api("query ($b: [ID!]) { boards(ids: $b) { name groups { id title color } columns { id title type } } }", { b: [String(boardId)] })
+    .then(function (d) {
+      var b = d.boards && d.boards[0];
+      if (!b) throw new Error("Board " + boardId + " not found");
+      return b;
+    });
+}
+
+function valuesById(item) {
+  var o = {};
+  (item.column_values || []).forEach(function (cv) { o[cv.id] = cv.text; });
+  return o;
+}
+
+function fetchSpend() {
+  var id = String(state.settings.spendBoardId || "").trim();
+  if (!id || id === String(state.boardId)) return Promise.resolve({ map: {}, note: null });
+  return fetchMeta(id).then(function (meta) {
+    var spentId = findCol(meta.columns, SPEND_COLS.spent);
+    var dailyId = findCol(meta.columns, SPEND_COLS.daily);
+    if (!spentId) return { map: {}, note: 'Live spend is off: no "Total Adspend This Billing Period" column on ' + meta.name + "." };
+    return fetchAllItems(id, [spentId, dailyId].filter(Boolean)).then(function (items) {
+      var map = {};
+      items.forEach(function (it) {
+        var v = valuesById(it);
+        map[norm(it.name)] = { spent: num(v[spentId]), daily: dailyId ? num(v[dailyId]) : null };
+      });
+      return { map: map, note: null };
+    });
+  }).catch(function (e) {
+    return { map: {}, note: "Live spend is off: couldn't read board " + id + " (" + (e.message || "unknown") + ")." };
+  });
+}
+
+function loadBoard() {
+  if (demo) { state.board = demoBoard(); state.loading = false; state.loadedAt = new Date(); render(); return; }
+  if (!state.boardId) return;
+  var showSpinner = !state.board;
+  if (showSpinner) { state.loading = true; render(); }
+  fetchMeta(state.boardId).then(function (meta) {
+    var ids = {};
+    Object.keys(COLS).forEach(function (k) { ids[k] = findCol(meta.columns, COLS[k]); });
+    var missing = [];
+    if (!ids.paid) missing.push('"Amount Paid"');
+    if (!ids.adspend) missing.push('"Total Adspend Budget"');
+    var wanted = Object.keys(ids).map(function (k) { return ids[k]; }).filter(Boolean);
+    return Promise.all([fetchAllItems(state.boardId, wanted), fetchSpend()]).then(function (r) {
+      var spend = r[1];
+      var items = r[0].map(function (raw) {
+        var v = valuesById(raw);
+        var live = spend.map[norm(raw.name)] || {};
+        return {
+          id: raw.id, name: raw.name, groupId: raw.group && raw.group.id,
+          paid: ids.paid ? num(v[ids.paid]) : null,
+          adspend: ids.adspend ? num(v[ids.adspend]) : null,
+          status: ids.status ? v[ids.status] : "",
+          start: ids.start ? parseDate(v[ids.start]) : null,
+          end: ids.end ? parseDate(v[ids.end]) : null,
+          spent: live.spent == null ? null : live.spent,
+          daily: live.daily == null ? null : live.daily
+        };
+      });
+      state.board = { name: meta.name, groups: meta.groups || [], items: items, missing: missing };
+      state.spendNote = spend.note;
+      if (state.tab !== "all" && !state.board.groups.some(function (g) { return g.id === state.tab; })) state.tab = "all";
+      state.error = null; state.loading = false; state.loadedAt = new Date();
+      render();
+    });
+  }).catch(function (e) {
+    state.loading = false;
+    state.error = "Could not load the board. Try refreshing. (" + (e.message || "unknown") + ")";
+    render();
+  });
+}
+
+/* ---------- the maths ---------- */
+
+/* A campaign counts once it has money against it. Blank rows are ignored. */
+function counted(it) { return (it.paid || 0) > 0 || (it.adspend || 0) > 0; }
+
+function dealFee(n) {
+  var s = state.settings;
+  return Math.max(0, Math.min(n * s.feePerCampaign, s.feeCap));
+}
+
+/*
+  Split a group's adspend pool across its campaigns.
+
+  pool = total paid - management (fee per campaign, capped per group)
+
+  "even"      every campaign gets the same adspend
+  "weighted"  adspend in proportion to what each campaign paid
+
+  Money already gone can't be moved, so finished campaigns are held at what
+  they actually spent (or their budget if we have no spend figure), and a
+  running campaign is never recommended less than it has already spent.
+  Whatever those leave is shared among the rest.
+*/
+function allocate(items, mode) {
+  var rows = items.filter(counted);
+  var n = rows.length;
+  var paid = 0, adspend = 0, spent = 0, hasSpend = false;
+  rows.forEach(function (it) {
+    paid += it.paid || 0; adspend += it.adspend || 0;
+    if (it.spent != null) { spent += it.spent; hasSpend = true; }
+  });
+  var fee = dealFee(n);
+  var pool = paid - fee;
+
+  var rec = {}, locked = {}, why = {};
+  rows.forEach(function (it) {
+    if (it.phantom) return;
+    if (isFinished(it)) {
+      locked[it.id] = it.spent != null ? it.spent : (it.adspend || 0);
+      why[it.id] = it.spent != null ? "finished, held at spend" : "finished, held at budget";
+    }
+  });
+  var guard = 0, changed = true;
+  while (changed && guard++ < rows.length + 2) {
+    changed = false;
+    var lockedSum = 0, weightSum = 0;
+    rows.forEach(function (it) {
+      if (it.id in locked) lockedSum += locked[it.id];
+      else weightSum += mode === "weighted" ? (it.paid || 0) : 1;
+    });
+    var remaining = pool - lockedSum;
+    rows.forEach(function (it) {
+      if (it.id in locked) { rec[it.id] = locked[it.id]; return; }
+      var w = mode === "weighted" ? (it.paid || 0) : 1;
+      rec[it.id] = weightSum > 0 ? Math.max(0, remaining) * w / weightSum : 0;
+    });
+    rows.forEach(function (it) {
+      if (it.id in locked || it.spent == null) return;
+      if (it.spent > rec[it.id] + 0.005) { locked[it.id] = it.spent; why[it.id] = "already spent more"; changed = true; }
+    });
+  }
+  var recSum = 0, open = 0, openShare = null;
+  rows.forEach(function (it) {
+    recSum += rec[it.id];
+    if (!(it.id in locked)) { open++; if (openShare == null) openShare = rec[it.id]; }
+  });
+
+  return {
+    rows: rows, n: n, paid: paid, adspend: adspend, spent: spent, hasSpend: hasSpend,
+    fee: fee, pool: pool,
+    boardFee: paid - adspend,          // what the board's formula column adds up to
+    credit: paid - adspend - fee,      // + = money not yet put into adspend, - = over-allocated
+    blendedFee: n ? fee / n : 0,
+    feeRate: paid ? fee / paid : 0,
+    rec: rec, why: why, recSum: recSum,
+    shortfall: recSum - pool,          // > 0 when locked spend already exceeds the pool
+    open: open, openShare: mode === "even" ? openShare : null
+  };
+}
+
+function groupItems(gid) {
+  var items = state.board.items.filter(function (it) { return it.groupId === gid; });
+  var p = state.plan[gid];
+  if (p && p.count > 0) {
+    for (var i = 0; i < Math.min(p.count, 20); i++) {
+      items.push({ id: "phantom-" + i, name: "New campaign " + (i + 1), groupId: gid, paid: p.paid || 0, adspend: 0, status: "Planned", spent: null, daily: null, start: null, end: null, phantom: true });
+    }
+  }
+  return items;
+}
+
+/* ---------- rendering ---------- */
+
+function statusPill(it) {
+  if (!it.status) return "";
+  var s = norm(it.status), cls = "";
+  if (s === "active") cls = " active";
+  else if (FINISHED.indexOf(s) !== -1) cls = " done";
+  else if (s === "paused") cls = " warn";
+  return '<span class="pill' + cls + '">' + esc(it.status) + "</span>";
+}
+
+function creditCard(a) {
+  var c = a.credit;
+  if (!a.n) return card("Credit", "–", "No campaigns with money against them yet.");
+  var sub = "Paid " + money(a.paid) + " less " + money(a.adspend) + " adspend and " + money(a.fee) + " management.";
+  if (Math.abs(c) < 0.005) return card("Credit", "Balanced", "Adspend plus management equals what was paid.");
+  if (c > 0) return card("Credit", money(c), "Under. " + sub + " This much is still unallocated.", "good");
+  return card("Over-allocated", money(-c), "Over. " + sub, "bad");
+}
+
+function card(label, value, sub, cls, extra) {
+  return '<div class="card ' + (cls || "") + '"><div class="card-lbl">' + esc(label) + '</div><div class="card-val">' + esc(value) + "</div>" +
+    (sub ? '<div class="card-sub">' + esc(sub) + "</div>" : "") + (extra || "") + "</div>";
+}
+
+function cards(a, groupCount) {
+  var s = state.settings;
+  var feeSub = a.n + (a.n === 1 ? " campaign" : " campaigns") + " at " + money(s.feePerCampaign) + ", capped at " + money(s.feeCap) + (groupCount > 1 ? " per group" : "") + ".";
+  if (Math.abs(a.boardFee - a.fee) >= 0.005) feeSub += " Board currently shows " + money(a.boardFee) + ".";
+  var html = '<div class="cards">';
+  html += card("Total paid", money(a.paid), a.n + (a.n === 1 ? " campaign" : " campaigns"));
+  html += card("Adspend budgeted", money(a.adspend), a.paid ? Math.round(a.adspend / a.paid * 100) + "% of what was paid" : "");
+  html += card("Management", money(a.fee), feeSub);
+  html += creditCard(a);
+  if (a.hasSpend) {
+    var pct = a.adspend ? a.spent / a.adspend * 100 : 0;
+    html += card("Spent so far", money(a.spent), money(a.adspend - a.spent) + " of budget left", "",
+      '<div class="prog-bar"><div class="prog-fill' + (pct > 100 ? " over" : "") + '" style="width:' + Math.min(100, pct).toFixed(1) + '%"></div></div>');
+  }
+  html += card("Average management", a.n ? money(a.blendedFee) : "–", a.n ? "per campaign, " + (a.feeRate * 100).toFixed(1) + "% of paid" : "");
+  html += "</div>";
+  return html;
+}
+
+function campaignTable(a, opts) {
+  opts = opts || {};
+  var h = '<div class="tbl-scroll"><table><thead><tr><th>Campaign</th><th>Paid</th><th>Adspend now</th><th>Mgmt now</th>';
+  if (a.hasSpend) h += "<th>Spent</th>";
+  h += '<th class="rec">Recommended adspend</th><th class="rec">Recommended mgmt</th><th class="rec">Change</th><th class="rec">Daily to hit it</th></tr></thead><tbody>';
+  a.rows.forEach(function (it) {
+    var rec = a.rec[it.id];
+    var d = daysLeft(it), daily = "–";
+    if (!it.phantom && !isFinished(it) && d != null && d > 0 && it.spent != null) {
+      daily = money(Math.max(0, rec - it.spent) / d) + '<span class="sub">' + d + (d === 1 ? " day" : " days") + " left" + (it.daily != null ? ", now " + money(it.daily) : "") + "</span>";
+    }
+    var dates = (it.start || it.end) ? '<span class="sub">' + esc(shortDate(it.start)) + (it.end ? " to " + esc(shortDate(it.end)) : "") + "</span>" : "";
+    h += '<tr class="' + (it.phantom ? "phantom" : "") + '">';
+    h += '<td class="name">' + (it.phantom ? esc(it.name) : '<a data-item="' + esc(it.id) + '">' + esc(it.name) + "</a>") + " " + statusPill(it) + dates + "</td>";
+    h += "<td>" + money(it.paid || 0) + "</td>";
+    h += "<td>" + (it.phantom ? "–" : money(it.adspend || 0)) + "</td>";
+    h += "<td>" + (it.phantom ? "–" : money((it.paid || 0) - (it.adspend || 0))) + "</td>";
+    if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
+    h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
+    h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
+    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : signed(rec - (it.adspend || 0))) + "</td>";
+    h += '<td class="rec">' + daily + "</td>";
+    h += "</tr>";
+  });
+  h += "</tbody><tfoot><tr><td>Total</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.boardFee) + "</td>";
+  if (a.hasSpend) h += "<td>" + money(a.spent) + "</td>";
+  h += '<td class="rec">' + money(a.recSum) + '</td><td class="rec">' + money(a.paid - a.recSum) + '</td><td class="rec">' + signed(a.recSum - a.adspend) + '</td><td class="rec"></td></tr></tfoot></table></div>';
+  return h;
+}
+
+function modeSwitch() {
+  return '<div class="seg"><button data-mode="even" class="' + (state.mode === "even" ? "active" : "") + '">Even split</button>' +
+    '<button data-mode="weighted" class="' + (state.mode === "weighted" ? "active" : "") + '">Weighted by paid</button></div>';
+}
+
+function recNote(a) {
+  if (!a.n) return "";
+  var s = state.settings, t;
+  t = money(a.paid) + " paid less " + money(a.fee) + " management leaves " + money(a.pool) + " for adspend. ";
+  if (state.mode === "even") {
+    t += a.open ? "Split evenly that is " + money(a.openShare) + " each" + (a.open < a.n ? " across the " + a.open + " that can still change" : "") + "." : "Every campaign here is finished, so nothing can move.";
+  } else {
+    t += "Shared in proportion to what each campaign paid.";
+  }
+  t += " Management averages " + money(a.blendedFee) + " a campaign";
+  if (a.n * s.feePerCampaign > s.feeCap) t += ", down from " + money(s.feePerCampaign) + " because the cap has kicked in";
+  t += ".";
+  if (a.shortfall > 0.005) t += " Heads up: spend already locked in is " + money(a.shortfall) + " more than the pool, so management comes in short by that much.";
+  return '<div class="panel-note">' + esc(t) + "</div>";
+}
+
+function planner(gid, a) {
+  var p = state.plan[gid] || { count: 0, paid: "" };
+  var s = state.settings, res = "";
+  if (p.count > 0) {
+    res = '<span class="result">' + a.n + " campaigns: " + money(a.fee) + " management (" + money(a.blendedFee) + " each)" +
+      (state.mode === "even" && a.open ? ", " + money(a.openShare) + " adspend each" : "") + "</span>";
+  }
+  return '<div class="planner"><span>What if we add</span><input type="number" min="0" max="20" step="1" data-plan="count" value="' + esc(p.count || "") + '" placeholder="0">' +
+    '<span>more campaigns paying</span><input type="number" min="0" step="50" data-plan="paid" value="' + esc(p.paid) + '" placeholder="$ each"><span>each?</span>' +
+    (p.count > 0 ? '<button class="btn" data-plan-clear>Clear</button>' : "") + res + "</div>";
+}
+
+function groupPanel(g, opts) {
+  var a = allocate(groupItems(g.id), state.mode);
+  var h = '<div class="panel"><div class="panel-head">';
+  h += '<div class="panel-title' + (opts.link ? " link" : "") + '"' + (opts.link ? ' data-tab="' + esc(g.id) + '"' : "") + '><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span>' + esc(g.title) + "</div>";
+  if (opts.showMode) h += modeSwitch();
+  h += "</div>";
+  if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
+  h += recNote(a) + campaignTable(a);
+  if (opts.planner) h += planner(g.id, a);
+  h += "</div>";
+  return h;
+}
+
+function summaryTable(groups) {
+  var h = '<div class="panel"><div class="panel-head"><div class="panel-title">Groups</div>' + modeSwitch() + '</div><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Campaigns</th><th>Paid</th><th>Adspend</th><th>Management</th><th>Credit</th><th class="rec">Even adspend each</th></tr></thead><tbody>';
+  groups.forEach(function (g) {
+    var a = allocate(groupItems(g.id), "even");
+    var credit = Math.abs(a.credit) < 0.005 ? '<span class="flat">balanced</span>' : (a.credit > 0 ? '<span class="up">' + money(a.credit) + " under</span>" : '<span class="down">' + money(-a.credit) + " over</span>");
+    h += '<tr class="clickable" data-tab="' + esc(g.id) + '"><td class="name"><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span> ' + esc(g.title) + "</td><td>" + a.n + "</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.fee) + "</td><td>" + credit + '</td><td class="rec">' + (a.n ? money(a.pool / a.n) : "–") + "</td></tr>";
+  });
+  h += "</tbody></table></div></div>";
+  return h;
+}
+
+/* Whole-board totals: the cap applies to each group separately, so add the groups up. */
+function boardTotals(groups) {
+  var t = { n: 0, paid: 0, adspend: 0, spent: 0, hasSpend: false, fee: 0 };
+  groups.forEach(function (g) {
+    var a = allocate(state.board.items.filter(function (it) { return it.groupId === g.id; }), "even");
+    t.n += a.n; t.paid += a.paid; t.adspend += a.adspend; t.fee += a.fee;
+    if (a.hasSpend) { t.spent += a.spent; t.hasSpend = true; }
+  });
+  t.boardFee = t.paid - t.adspend;
+  t.credit = t.paid - t.adspend - t.fee;
+  t.blendedFee = t.n ? t.fee / t.n : 0;
+  t.feeRate = t.paid ? t.fee / t.paid : 0;
+  return t;
+}
+
+function settingsPanel() {
+  var s = state.settings;
+  return '<div class="panel"><div class="panel-head"><div class="panel-title">Settings</div></div><div class="settings">' +
+    '<div><label>Management fee per campaign ($)</label><input type="number" min="0" step="50" id="set-fee" value="' + esc(s.feePerCampaign) + '"></div>' +
+    '<div><label>Maximum management per group ($)</label><input type="number" min="0" step="50" id="set-cap" value="' + esc(s.feeCap) + '"></div>' +
+    '<div><label>Board ID to read live Meta spend from</label><input type="text" id="set-spend" value="' + esc(s.spendBoardId) + '" placeholder="Leave blank to turn off"></div>' +
+    '</div><div class="settings-actions"><button class="btn btn-primary" data-settings-save>Save</button><button class="btn" data-settings-reset>Reset to defaults</button><span class="stamp">Saved in this browser only.</span></div></div>';
+}
+
+function render() {
+  if (state.error) { root.innerHTML = '<div class="error-state"><div class="error-icon">⚠</div><p>' + esc(state.error) + "</p></div>"; return; }
+  if (state.loading || !state.board) { root.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading board…</p></div>'; return; }
+
+  var b = state.board;
+  var groups = b.groups;
+  var counts = {};
+  b.items.forEach(function (it) { if (counted(it)) counts[it.groupId] = (counts[it.groupId] || 0) + 1; });
+
+  var h = '<div class="wrap"><div class="header"><div class="header-left">' + LOGO + '<span class="board-name">' + esc(b.name) + "</span></div>" +
+    '<div class="header-right">' + (state.loadedAt ? '<span class="stamp">Updated ' + esc(state.loadedAt.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })) + "</span>" : "") +
+    '<button class="btn" data-refresh>Refresh</button><button class="btn" data-settings-toggle>' + (state.showSettings ? "Close settings" : "Settings") + "</button></div></div>";
+
+  if (state.showSettings) h += settingsPanel();
+  if (b.missing && b.missing.length) h += '<div class="warning">This board is missing a column called ' + esc(b.missing.join(" and ")) + ", so the numbers below will be empty. Add it (the name has to match) and hit Refresh.</div>";
+  if (state.spendNote) h += '<div class="warning">' + esc(state.spendNote) + "</div>";
+
+  h += '<div class="cat-tabs"><button class="cat-tab' + (state.tab === "all" ? " active" : "") + '" data-tab="all">Whole board</button>';
+  groups.forEach(function (g) {
+    h += '<button class="cat-tab' + (state.tab === g.id ? " active" : "") + '" data-tab="' + esc(g.id) + '"><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span>' + esc(g.title) + '<span class="tab-count">' + (counts[g.id] || 0) + "</span></button>";
+  });
+  h += "</div>";
+
+  if (state.tab === "all") {
+    h += cards(boardTotals(groups), groups.length);
+    if (groups.length > 1) h += summaryTable(groups);
+    groups.forEach(function (g, i) { h += groupPanel(g, { link: true, showMode: groups.length === 1 && i === 0 }); });
+    if (!groups.length) h += '<div class="empty">This board has no groups yet.</div>';
+  } else {
+    var g = groups.filter(function (x) { return x.id === state.tab; })[0];
+    var real = allocate(b.items.filter(function (it) { return it.groupId === g.id; }), state.mode);
+    h += cards(real, 1);
+    h += groupPanel(g, { showMode: true, planner: true });
+  }
+  h += "</div>";
+  root.innerHTML = h;
+}
+
+/* ---------- events ---------- */
+
+root.addEventListener("click", function (e) {
+  var t = e.target.closest("[data-tab],[data-mode],[data-item],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
+  if (!t) return;
+  if (t.hasAttribute("data-item")) {
+    if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
+    return;
+  }
+  if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); window.scrollTo(0, 0); }
+  else if (t.hasAttribute("data-mode")) state.mode = t.getAttribute("data-mode");
+  else if (t.hasAttribute("data-refresh")) { loadBoard(); return; }
+  else if (t.hasAttribute("data-settings-toggle")) state.showSettings = !state.showSettings;
+  else if (t.hasAttribute("data-plan-clear")) delete state.plan[state.tab];
+  else if (t.hasAttribute("data-settings-reset")) {
+    state.settings = Object.assign({}, DEFAULTS); saveSettings(state.settings); state.showSettings = false; loadBoard(); return;
+  }
+  else if (t.hasAttribute("data-settings-save")) {
+    var fee = num(document.getElementById("set-fee").value), cap = num(document.getElementById("set-cap").value);
+    state.settings = {
+      feePerCampaign: fee == null || fee < 0 ? DEFAULTS.feePerCampaign : fee,
+      feeCap: cap == null || cap < 0 ? DEFAULTS.feeCap : cap,
+      spendBoardId: document.getElementById("set-spend").value.replace(/[^0-9]/g, "")
+    };
+    saveSettings(state.settings); state.showSettings = false; loadBoard(); return;
+  }
+  render();
+});
+
+root.addEventListener("change", function (e) {
+  var key = e.target.getAttribute && e.target.getAttribute("data-plan");
+  if (!key || state.tab === "all") return;
+  var p = state.plan[state.tab] || { count: 0, paid: "" };
+  var v = num(e.target.value);
+  if (key === "count") p.count = v == null ? 0 : Math.max(0, Math.min(20, Math.round(v)));
+  else p.paid = v == null ? "" : Math.max(0, v);
+  state.plan[state.tab] = p;
+  // Wait for the blur that fired this to finish, then put the cursor back where the user tabbed to.
+  setTimeout(function () {
+    var a = document.activeElement, focus = a && a.getAttribute && a.getAttribute("data-plan");
+    render();
+    var el = focus && root.querySelector('[data-plan="' + focus + '"]');
+    if (el) el.focus();
+  }, 0);
+});
+
+/* ---------- demo data (open with ?demo=1 outside monday) ---------- */
+
+function demoBoard() {
+  function d(offset) { var x = today(); x.setDate(x.getDate() + offset); return x; }
+  var items = [
+    { id: "1", name: "Demo - 12 Example Street - Leads - Instant Forms", groupId: "g1", paid: 1500, adspend: 1000, status: "Active", spent: 260, daily: 33, start: d(-8), end: d(26) },
+    { id: "2", name: "Demo - 8 Sample Road - Leads - Instant Forms", groupId: "g1", paid: 1500, adspend: 1000, status: "Active", spent: 248, daily: 33, start: d(-8), end: d(26) },
+    { id: "3", name: "Demo - 3/40 Placeholder Avenue - Leads - Instant Forms", groupId: "g1", paid: 1500, adspend: 1000, status: "Active", spent: 497, daily: 33, start: d(-15), end: d(16) },
+    { id: "4", name: "Demo - 77 Test Parade - Leads - Instant Forms", groupId: "g1", paid: 2000, adspend: 2000, status: "Active", spent: 301, daily: 66, start: d(-5), end: d(28) },
+    { id: "5", name: "Demo - 5 Mock Close - Leads - Instant Forms", groupId: "g2", paid: 1500, adspend: 1000, status: "Finished", spent: 967.7, daily: null, start: d(-45), end: d(-32) },
+    { id: "6", name: "Demo - 21 Fixture Lane - Leads - Instant Forms", groupId: "g2", paid: 1250, adspend: 800, status: "Active", spent: 610, daily: 30, start: d(-30), end: d(4) }
+  ];
+  return { name: "Demo board", groups: [{ id: "g1", title: "This month", color: "#378ADD" }, { id: "g2", title: "Last month", color: "#7F77DD" }], items: items, missing: [] };
+}
+
+/* ---------- boot ---------- */
+
+if (demo) {
+  loadBoard();
+} else if (!monday) {
+  state.loading = false;
+  state.error = "Could not load the monday SDK. Check your connection and refresh.";
+  render();
+} else {
+  var timeout = setTimeout(function () {
+    if (state.boardId) return;
+    state.loading = false;
+    state.error = "Could not connect to monday.com. This page only works as a board view inside monday.";
+    render();
+  }, 8000);
+  monday.listen("context", function (res) {
+    var id = res && res.data && (res.data.boardId || (res.data.boardIds && res.data.boardIds[0]));
+    if (!id || String(id) === String(state.boardId)) return;
+    clearTimeout(timeout);
+    state.boardId = String(id); state.board = null; state.tab = "all"; state.plan = {};
+    loadBoard();
+  });
+  var refreshTimer = null;
+  monday.listen("events", function () {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(loadBoard, 1200);
+  });
+}
+
+})();
+</script>
+</body>
+</html>

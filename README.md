@@ -18,3 +18,29 @@ Use a Business Manager **system user** token so it never expires:
 
 - Advantage+ catalog ads and Stories can't be moderated via the API
 - Replying from a page-backed Instagram account isn't possible (hide/delete work)
+
+## Billing overview (monday board view)
+
+`billing/index.html` is a monday.com board view, served at `/billing/`. Same idea as the checklist app, but it runs on the whole board and is plain HTML plus the monday SDK. No build step, no Vibe.
+
+It gives one tab per group plus a whole-board tab, and for each it shows:
+
+- total paid, adspend budgeted, management owed, and whether the client is in credit or over-allocated
+- live Meta spend, read from the Social Campaigns board by matching campaign names
+- a recommended adspend and management figure per campaign, split evenly or weighted by what each campaign paid
+- a "what if we add more campaigns" row for planning
+
+Management is a flat fee per campaign up to a cap per group (defaults 500 and 1500, change them under Settings in the view). Finished campaigns are held at what they actually spent, and a running campaign is never recommended less than it has already spent.
+
+### Board columns
+
+Matched by title, case doesn't matter: `Amount Paid`, `Total Adspend Budget`, `Status`, `Start Date`, `End Date`. The first two are required.
+
+### Install in monday
+
+1. Developers → Create app → Features → add a **Board View**
+2. Deployment: **External hosting**, URL `https://<this site's Vercel domain>/billing/`
+3. OAuth & Permissions: add `boards:read`
+4. Open the billing board → add view → Apps → pick the app
+
+Open `/billing/?demo=1` in a normal browser tab to see it with made-up data.
