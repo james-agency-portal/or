@@ -146,7 +146,7 @@ var state = {
   board: null,        // { name, groups:[{id,title,color}], items:[...] }
   spendNote: null,
   tab: "all",
-  mode: "even",       // "even" | "weighted"
+  mode: "weighted",   // "weighted" (scales with what each campaign paid) | "even"
   plan: {},           // groupId -> { count, paid }
   showSettings: false,
   loading: true,
@@ -370,10 +370,10 @@ function allocate(items, mode) {
       if (it.spent > rec[it.id] + 0.005) { locked[it.id] = it.spent; why[it.id] = "already spent more"; changed = true; }
     });
   }
-  var recSum = 0, open = 0, openShare = null;
+  var recSum = 0, open = 0, openShare = null, openPaid = 0, openRec = 0;
   rows.forEach(function (it) {
     recSum += rec[it.id];
-    if (!(it.id in locked)) { open++; if (openShare == null) openShare = rec[it.id]; }
+    if (!(it.id in locked)) { open++; openPaid += it.paid || 0; openRec += rec[it.id]; if (openShare == null) openShare = rec[it.id]; }
   });
 
   return {
@@ -385,7 +385,8 @@ function allocate(items, mode) {
     feeRate: paid ? fee / paid : 0,
     rec: rec, why: why, recSum: recSum,
     shortfall: recSum - pool,          // > 0 when locked spend already exceeds the pool
-    open: open, openShare: mode === "even" ? openShare : null
+    open: open, openShare: mode === "even" ? openShare : null,
+    openRate: openPaid > 0 ? openRec / openPaid : null   // adspend per dollar paid, for campaigns that can still change
   };
 }
 
@@ -475,8 +476,8 @@ function campaignTable(a, opts) {
 }
 
 function modeSwitch() {
-  return '<div class="seg"><button data-mode="even" class="' + (state.mode === "even" ? "active" : "") + '">Even split</button>' +
-    '<button data-mode="weighted" class="' + (state.mode === "weighted" ? "active" : "") + '">Weighted by paid</button></div>';
+  return '<div class="seg"><button data-mode="weighted" class="' + (state.mode === "weighted" ? "active" : "") + '">Scaled by paid</button>' +
+    '<button data-mode="even" class="' + (state.mode === "even" ? "active" : "") + '">Even split</button></div>';
 }
 
 function recNote(a) {
@@ -486,7 +487,8 @@ function recNote(a) {
   if (state.mode === "even") {
     t += a.open ? "Split evenly that is " + money(a.openShare) + " each" + (a.open < a.n ? " across the " + a.open + " that can still change" : "") + "." : "Every campaign here is finished, so nothing can move.";
   } else {
-    t += "Shared in proportion to what each campaign paid.";
+    t += !a.open ? "Every campaign here is finished, so nothing can move."
+      : "Shared in proportion to what each campaign paid" + (a.openRate != null ? ", so each gets " + (a.openRate * 100).toFixed(1) + "% of its payment as adspend" : "") + (a.open < a.n ? " (across the " + a.open + " that can still change)" : "") + ".";
   }
   t += " Management averages " + money(a.blendedFee) + " a campaign";
   if (a.n * s.feePerCampaign > s.feeCap) t += ", down from " + money(s.feePerCampaign) + " because the cap has kicked in";
@@ -521,11 +523,11 @@ function groupPanel(g, opts) {
 }
 
 function summaryTable(groups) {
-  var h = '<div class="panel"><div class="panel-head"><div class="panel-title">Groups</div>' + modeSwitch() + '</div><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Campaigns</th><th>Paid</th><th>Adspend</th><th>Management</th><th>Credit</th><th class="rec">Even adspend each</th></tr></thead><tbody>';
+  var h = '<div class="panel"><div class="panel-head"><div class="panel-title">Groups</div>' + modeSwitch() + '</div><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Campaigns</th><th>Paid</th><th>Adspend</th><th>Management</th><th>Credit</th><th class="rec">Adspend pool</th></tr></thead><tbody>';
   groups.forEach(function (g) {
     var a = allocate(groupItems(g.id), "even");
     var credit = Math.abs(a.credit) < 0.005 ? '<span class="flat">balanced</span>' : (a.credit > 0 ? '<span class="up">' + money(a.credit) + " under</span>" : '<span class="down">' + money(-a.credit) + " over</span>");
-    h += '<tr class="clickable" data-tab="' + esc(g.id) + '"><td class="name"><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span> ' + esc(g.title) + "</td><td>" + a.n + "</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.fee) + "</td><td>" + credit + '</td><td class="rec">' + (a.n ? money(a.pool / a.n) : "–") + "</td></tr>";
+    h += '<tr class="clickable" data-tab="' + esc(g.id) + '"><td class="name"><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span> ' + esc(g.title) + "</td><td>" + a.n + "</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.fee) + "</td><td>" + credit + '</td><td class="rec">' + (a.n ? money(a.pool) : "–") + "</td></tr>";
   });
   h += "</tbody></table></div></div>";
   return h;
