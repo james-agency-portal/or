@@ -320,13 +320,13 @@ function dealFee(n) {
 
   pool = total paid - management (fee per campaign, capped per group)
 
-  Each campaign gets adspend in proportion to what it paid, so one that paid
-  more is recommended more.
+  Every campaign carries the same management, and the rest of what it paid
+  goes to its adspend. So a campaign that paid more is recommended more adspend.
 
   Money already gone can't be moved, so finished campaigns are held at what
   they actually spent (or their budget if we have no spend figure), and a
   running campaign is never recommended less than it has already spent.
-  Whatever those leave is shared among the rest.
+  The management those leave is shared equally among the rest.
 */
 function allocate(items) {
   var rows = items.filter(counted);
@@ -350,26 +350,30 @@ function allocate(items) {
   var guard = 0, changed = true;
   while (changed && guard++ < rows.length + 2) {
     changed = false;
-    var lockedSum = 0, weightSum = 0;
+    var lockedSum = 0, openPaid = 0, openCount = 0;
     rows.forEach(function (it) {
       if (it.id in locked) lockedSum += locked[it.id];
-      else weightSum += it.paid || 0;
+      else { openPaid += it.paid || 0; openCount++; }
     });
-    var remaining = pool - lockedSum;
+    // Management each open campaign carries so that their adspend adds up to what's left of the pool.
+    var feeEach = openCount ? (openPaid - (pool - lockedSum)) / openCount : 0;
     rows.forEach(function (it) {
       if (it.id in locked) { rec[it.id] = locked[it.id]; return; }
-      var w = it.paid || 0;
-      rec[it.id] = weightSum > 0 ? Math.max(0, remaining) * w / weightSum : 0;
+      rec[it.id] = (it.paid || 0) - feeEach;
     });
     rows.forEach(function (it) {
-      if (it.id in locked || it.spent == null) return;
-      if (it.spent > rec[it.id] + 0.005) { locked[it.id] = it.spent; why[it.id] = "already spent more"; changed = true; }
+      if (it.id in locked) return;
+      var floor = it.spent || 0;
+      if (floor > rec[it.id] + 0.005) {
+        locked[it.id] = floor; changed = true;
+        why[it.id] = floor > 0 ? "already spent more" : "paid less than the management share";
+      }
     });
   }
-  var recSum = 0, open = 0, openPaid = 0, openRec = 0;
+  var recSum = 0, open = 0, openFee = null;
   rows.forEach(function (it) {
     recSum += rec[it.id];
-    if (!(it.id in locked)) { open++; openPaid += it.paid || 0; openRec += rec[it.id]; }
+    if (!(it.id in locked)) { open++; openFee = (it.paid || 0) - rec[it.id]; }
   });
 
   return {
@@ -382,7 +386,7 @@ function allocate(items) {
     rec: rec, why: why, recSum: recSum,
     shortfall: recSum - pool,          // > 0 when locked spend already exceeds the pool
     open: open,
-    openRate: openPaid > 0 ? openRec / openPaid : null   // adspend per dollar paid, for campaigns that can still change
+    openFee: openFee                   // management each campaign that can still change carries
   };
 }
 
@@ -476,10 +480,8 @@ function recNote(a) {
   var s = state.settings, t;
   t = money(a.paid) + " paid less " + money(a.fee) + " management leaves " + money(a.pool) + " for adspend. ";
   t += !a.open ? "Every campaign here is finished, so nothing can move."
-    : "Shared in proportion to what each campaign paid" + (a.openRate != null ? ", so each gets " + (a.openRate * 100).toFixed(1) + "% of its payment as adspend" : "") + (a.open < a.n ? " (across the " + a.open + " that can still change)" : "") + ".";
-  t += " Management averages " + money(a.blendedFee) + " a campaign";
-  if (a.n * s.feePerCampaign > s.feeCap) t += ", down from " + money(s.feePerCampaign) + " because the cap has kicked in";
-  t += ".";
+    : "Each campaign carries " + money(a.openFee) + " management" + (a.n * s.feePerCampaign > s.feeCap ? ", down from " + money(s.feePerCampaign) + " because the cap has kicked in," : "") +
+      " and the rest of its payment goes to adspend" + (a.open < a.n ? " (for the " + a.open + " that can still change)" : "") + ".";
   if (a.shortfall > 0.005) t += " Heads up: spend already locked in is " + money(a.shortfall) + " more than the pool, so management comes in short by that much.";
   return '<div class="panel-note">' + esc(t) + "</div>";
 }
