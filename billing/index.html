@@ -593,12 +593,14 @@ function campaignTable(a, opts) {
     h += '<tr class="' + (it.phantom ? "phantom" : "") + '">';
     h += '<td class="name">' + (it.phantom ? esc(it.name) : '<a data-item="' + esc(it.id) + '">' + esc(it.name) + "</a>") + " " + statusPill(it) + dates + "</td>";
     h += "<td>" + money(it.paid || 0) + "</td>";
-    h += "<td>" + (it.phantom ? "–" : money(it.adspend || 0)) + "</td>";
-    h += "<td>" + (it.phantom ? "–" : money((it.paid || 0) - (it.adspend || 0))) + "</td>";
+    // Only Amount Paid filled in: nothing to compare against yet, so just say what to set.
+    var unset = !it.phantom && it.adspend == null;
+    h += "<td>" + (it.phantom ? "–" : unset ? '<span class="flat">not set</span>' : money(it.adspend)) + "</td>";
+    h += "<td>" + (it.phantom || unset ? "–" : money((it.paid || 0) - it.adspend)) + "</td>";
     if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
     h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
     h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
-    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : changeCell(a, rec - (it.adspend || 0))) + "</td>";
+    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + "</td>";
     h += '<td class="rec">' + daily + "</td>";
     h += "</tr>";
   });
