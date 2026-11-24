@@ -120,7 +120,7 @@ var DEFAULTS = {
   spendBoardId: "18424974331", // board with live Meta spend, matched to this board by campaign name
   expectedCampaigns: "",    // campaigns expected per month; blank = work it out from past months and the current pace
   hedge: 50,                // % weight given to campaigns that are forecast but haven't arrived yet
-  tolerance: 50             // a set campaign within this many dollars of the forecast management is left alone
+  tolerance: 75             // after a Re-forecast, a set campaign is only changed if its management is more than this far off
 };
 var SETTINGS_KEY = "billing-view-settings-v1";
 
@@ -465,10 +465,11 @@ function describeForecast(fc) {
   campaigns already set are holding more or less management than the forecast
   calls for, the new ones take the difference, so the old ones don't move.
 
-  Campaigns already set are left alone while their management is within the
-  tolerance of the forecast figure (default $50). One that is further off is
-  brought onto the forecast. If the group would still be short on management
-  after that, the ones holding the least are raised first.
+  Campaigns already set are left alone. The one exception is after someone
+  clicks Re-forecast: then any set campaign whose management is over or under
+  the new forecast figure by more than the tolerance (default $75) is brought
+  onto it, and if the group is still short by more than that, the ones holding
+  the least are raised first. That round closes once the changes are applied.
 
   Money already gone can't be moved: finished campaigns are held at what they
   spent (or their budget if we have no spend figure), and a running campaign
@@ -492,6 +493,8 @@ function allocate(items, g) {
   var required = Math.min(feeEach * n, fee);
 
   var rec = {}, why = {}, held = 0, fresh = [], movable = [], moved = 0;
+  // Set campaigns are only ever changed as part of a Re-forecast someone clicked, until those changes are applied.
+  var reviewing = !!(fc && fc.review && !whatIf);
   var tol = num(state.settings.tolerance); tol = tol == null || tol < 0 ? DEFAULTS.tolerance : tol;
   rows.forEach(function (it) {
     if (!it.phantom && isFinished(it)) {
@@ -501,9 +504,9 @@ function allocate(items, g) {
     } else if (it.phantom || it.adspend == null) {
       fresh.push(it);
     } else {
-      // Close enough to the forecast: leave it alone. Way off: bring it onto the forecast figure.
+      // Normally left alone. After a Re-forecast, one that is over or under by more than the tolerance is brought onto the forecast figure.
       var mNow = (it.paid || 0) - it.adspend, r = it.adspend;
-      if (fc && Math.abs(mNow - feeEach) > tol) {
+      if (reviewing && Math.abs(mNow - feeEach) > tol) {
         r = Math.max((it.paid || 0) - Math.min(feeEach, it.paid || 0), Math.max(0, it.spent || 0));
         if (Math.abs(r - it.adspend) >= 1) { moved++; if (r > (it.paid || 0) - feeEach + 0.005) why[it.id] = "already spent more"; }
         else r = it.adspend;
@@ -529,7 +532,7 @@ function allocate(items, g) {
 
   // Still short? Raise the campaigns holding the least management up to a common level, as far as their unspent budget allows.
   var short = required - held, raised = 0;
-  if (short > 20 && movable.length) {   // small gaps aren't worth going back and changing budgets for
+  if (reviewing && short > tol && movable.length) {
     var m0 = {}, cap = {}, lo = Infinity, hi = 0;
     movable.forEach(function (it) {
       m0[it.id] = (it.paid || 0) - rec[it.id];
@@ -564,7 +567,7 @@ function allocate(items, g) {
     blendedFee: n ? fee / n : 0,
     feeRate: paid ? fee / paid : 0,
     rec: rec, why: why, recSum: recSum,
-    required: required, short: Math.max(0, short), raised: raised, moved: moved, tol: tol, fresh: fresh.length, freshFee: freshFee, set: movable.length,
+    required: required, short: Math.max(0, short), raised: raised, moved: moved, tol: tol, reviewing: reviewing, fresh: fresh.length, freshFee: freshFee, set: movable.length,
     changes: changes, needsChange: changes > 0,
     collected: paid - recSum,          // management we'd keep if the recommendations were applied and nothing else changed
     forecast: fc, whatIf: whatIf,
@@ -608,6 +611,7 @@ function settleForecasts() {
     if (!want && state.forecasts[g.id]) return;
     var before = state.forecasts[g.id] || null;
     state.forecasts[g.id] = liveForecast(g, realCount(g.id));
+    state.forecasts[g.id].review = !!want;   // a clicked Re-forecast opens set campaigns up for one round of changes
     if (want) state.reforecastResult = { gid: g.id, before: before, after: state.forecasts[g.id] };
     changed = true;
   });
@@ -726,12 +730,17 @@ function applyBar(gid, a) {
     (busy ? "Saving…" : "Apply " + (list.length === 1 ? "change" : "all " + list.length + " changes")) + "</button></div>";
 }
 
+/* The round of changes a Re-forecast opened is done once it has been applied. */
+function closeReview(gid) {
+  if (state.forecasts[gid] && state.forecasts[gid].review) { state.forecasts[gid].review = false; saveForecasts(); }
+}
+
 function applyAll(gid) {
   var g = state.board.groups.filter(function (x) { return x.id === gid; })[0];
   if (!g || state.filling) return;
   var list = pendingChanges(allocate(state.board.items.filter(function (it) { return it.groupId === gid; }), g));
   if (!list.length) return;
-  if (demo) { list.forEach(function (c) { c.item.adspend = c.value; }); render(); return; }
+  if (demo) { list.forEach(function (c) { c.item.adspend = c.value; }); closeReview(gid); render(); return; }
   var col = state.board.adspendCol;
   if (!col) return;
   var edits = list.filter(function (c) { return c.from != null; }).length;
@@ -750,7 +759,7 @@ function applyAll(gid) {
       });
     });
     return chain.then(function () {
-      state.filling = null;
+      state.filling = null; closeReview(gid);
       try { monday.execute("notice", { message: "Adspend budget updated on " + done + (done === 1 ? " campaign" : " campaigns"), type: "success", timeout: 4000 }); } catch (e) {}
       loadBoard();
     });
@@ -791,8 +800,9 @@ function recNote(a) {
   }
   if (!a.whatIf) {
     if (a.raised) t += " Management was going to come up short, so " + a.raised + (a.raised === 1 ? " campaign" : " campaigns") + " already set " + (a.raised === 1 ? "needs" : "need") + " to give some adspend back, starting with the ones holding the least management.";
-    else if (a.moved) t += " " + a.moved + (a.moved === 1 ? " campaign already set is" : " campaigns already set are") + " more than " + money(a.tol) + " off that, so " + (a.moved === 1 ? "it's" : "they're") + " brought onto it." + (a.set > a.moved ? " The rest are close enough to leave." : "");
-    else if (a.set) t += " Everything already set is within " + money(a.tol) + " of that, so nothing needs to change.";
+    else if (a.moved) t += " After this Re-forecast, " + a.moved + (a.moved === 1 ? " campaign already set is" : " campaigns already set are") + " more than " + money(a.tol) + " over or under that, so " + (a.moved === 1 ? "it's" : "they're") + " brought onto it." + (a.set > a.moved ? " The rest are close enough to leave." : "");
+    else if (a.set && a.reviewing) t += " Everything already set is within " + money(a.tol) + " of that, so nothing needs to change.";
+    else if (a.set) t += " Campaigns already set stay as they are.";
     if (a.short > 1) t += " Even so it's " + money(a.short) + " short, because the rest has already been spent.";
     if (a.collected > a.fee + 1) t += " Management held is " + money(a.collected - a.fee) + " over what's owed today, which sits as credit.";
     else if (a.collected < a.fee - 20 && fc.more >= 0.05) t += " Holding " + money(a.collected) + " against " + money(a.fee) + " owed for now. The campaigns still expected make up the rest.";
@@ -871,7 +881,7 @@ function settingsPanel() {
     '<div><label>Management fee per campaign ($)</label><input type="number" min="0" step="50" id="set-fee" value="' + esc(s.feePerCampaign) + '"></div>' +
     '<div><label>Maximum management per group ($)</label><input type="number" min="0" step="50" id="set-cap" value="' + esc(s.feeCap) + '"></div>' +
     '<div><label>Campaigns expected per month</label><input type="number" min="0" step="1" id="set-expected" value="' + esc(s.expectedCampaigns) + '" placeholder="Blank = forecast it"></div>' +
-    '<div><label>Leave a campaign alone if its management is within ($)</label><input type="number" min="0" step="10" id="set-tol" value="' + esc(s.tolerance) + '"></div>' +
+    '<div><label>After a Re-forecast, change a set campaign only if its management is off by more than ($)</label><input type="number" min="0" step="10" id="set-tol" value="' + esc(s.tolerance) + '"></div>' +
     '<div><label>Weight for campaigns expected but not here yet (%)</label><input type="number" min="0" max="100" step="5" id="set-hedge" value="' + esc(s.hedge) + '"></div>' +
     '<div><label>Board ID to read live Meta spend from</label><input type="text" id="set-spend" value="' + esc(s.spendBoardId) + '" placeholder="Leave blank to turn off"></div>' +
     '</div><div class="settings-actions"><button class="btn btn-primary" data-settings-save>Save</button><button class="btn" data-settings-reset>Reset to defaults</button><span class="stamp">Saved in this browser only.</span></div></div>';
