@@ -50,6 +50,8 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title.link:hover{text-decoration:underline}
 .panel-note.done{color:#0F6E56;background:var(--green-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .applybar{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px;border-top:0.5px solid var(--border);font-size:12.5px;color:var(--muted)}
+.btn-quiet{background:none;border-color:transparent;color:var(--muted);padding:6px 8px}
+.btn-quiet:hover{background:var(--bg);color:var(--text)}
 .btn:disabled{opacity:.6;cursor:default}
 .panel-note.stale{color:#633806;background:var(--amber-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
@@ -489,7 +491,7 @@ function allocate(items, g) {
 
   // Still short? Raise the campaigns holding the least management up to a common level, as far as their unspent budget allows.
   var short = required - held, raised = 0;
-  if (short > 1 && movable.length) {
+  if (short > 20 && movable.length) {   // small gaps aren't worth going back and changing budgets for
     var m0 = {}, cap = {}, lo = Infinity, hi = 0;
     movable.forEach(function (it) {
       m0[it.id] = (it.paid || 0) - it.adspend;
@@ -528,7 +530,9 @@ function allocate(items, g) {
     changes: changes, needsChange: changes > 0,
     collected: paid - recSum,          // management we'd keep if the recommendations were applied and nothing else changed
     forecast: fc, whatIf: whatIf,
-    stale: !!(fc && now && !whatIf && Math.abs(now.feeEach - fc.feeEach) >= 1), now: now
+    // Re-forecasting is for emergencies. Only flag it when the month has gone well off the original forecast:
+    // out by a campaign and a half or more, and enough to move management per campaign by $50.
+    stale: !!(fc && now && !whatIf && Math.abs(now.expected - fc.expected) >= 1.5 && Math.abs(now.feeEach - fc.feeEach) >= 50), now: now
   };
 }
 
@@ -755,7 +759,11 @@ function recNote(a) {
     else if (a.collected < a.fee - 1 && fc.more >= 0.05) t += " Holding " + money(a.collected) + " against " + money(a.fee) + " owed for now. The campaigns still expected make up the rest.";
   }
   var h = '<div class="panel-note">' + esc(t) + "</div>";
-  if (a.stale) h += '<div class="panel-note stale">Things have moved since this forecast. Right now it would be ' + esc(count1(a.now.expected)) + " campaigns and " + esc(money(a.now.feeEach)) + " each. Click Re-forecast to update the recommendations.</div>";
+  if (a.stale) {
+    h += '<div class="panel-note stale">This month is well off the forecast. It expected about ' + esc(count1(fc.expected)) + " campaigns and it now looks like " + esc(count1(a.now.expected)) +
+      (a.now.expected < fc.expected ? ", so management is on track to come up short" : ", so more management is being held than needed") +
+      ". Re-forecast to reset it to " + esc(money(a.now.feeEach)) + " each.</div>";
+  }
   return h;
 }
 
@@ -777,7 +785,8 @@ function groupPanel(g, opts) {
   var saved = state.forecasts[g.id];
   if (saved && saved.at) h += '<span class="stamp">Forecast from ' + esc(new Date(saved.at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })) + "</span>";
   var busy = state.reforecasting === g.id;
-  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
+  // Quiet by default. It only stands out when the month has gone far enough off to need it.
+  h += '<button class="btn' + (a.stale ? " btn-primary" : " btn-quiet") + '" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
   h += "</div>";
   if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
   h += reforecastMsg(g.id) + recNote(a) + campaignTable(a);

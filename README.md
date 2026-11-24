@@ -33,7 +33,7 @@ It gives one tab per group plus a whole-board tab, and for each it shows:
 
 Management is a flat fee per campaign up to a cap per group (defaults 500 and 1500, change them under Settings in the view). Groups are months, named like "November 2026".
 
-The forecast blends a weighted average of the last three months' campaign counts with this month's pace, leaning on the pace more as the month goes on. Campaigns that are forecast but haven't arrived count at half weight when the fee is shared out (changeable in Settings), so the view errs towards holding slightly too much management, which goes back into adspend as credit. It is saved and holds still until someone clicks **Re-forecast** on the group, so recommendations don't shift every time a campaign is added. The view says when the saved forecast has drifted from what it would be now.
+The forecast blends a weighted average of the last three months' campaign counts with this month's pace, leaning on the pace more as the month goes on. Campaigns that are forecast but haven't arrived count at half weight when the fee is shared out (changeable in Settings), so the view errs towards holding slightly too much management, which goes back into adspend as credit. It is saved and holds still until someone clicks **Re-forecast** on the group, so recommendations don't shift every time a campaign is added. Re-forecasting is meant for emergencies: the button stays quiet, and the view only prompts for it when the month has gone well off the original forecast (out by a campaign and a half or more).
 
 Finished campaigns are held at what they actually spent, and a running campaign is never recommended less than it has already spent.
 
