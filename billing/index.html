@@ -761,8 +761,17 @@ function campaignTable(a, opts) {
   a.rows.forEach(function (it) {
     var rec = a.rec[it.id];
     var d = daysLeft(it), daily = "–";
-    if (!it.phantom && !isFinished(it) && d != null && d > 0 && it.spent != null) {
-      daily = money(Math.max(0, rec - it.spent) / d) + '<span class="sub">' + d + (d === 1 ? " day" : " days") + " left" + (it.daily != null ? ", now " + money(it.daily) : "") + "</span>";
+    if (!it.phantom && !isFinished(it)) {
+      if (!it.end) {
+        daily = '–<span class="sub">needs an end date</span>';
+      } else if (it.spent != null && d > 0) {
+        // Already running with a spend figure: spread what's left over the days left.
+        daily = money(Math.max(0, rec - it.spent) / d) + '<span class="sub">' + d + (d === 1 ? " day" : " days") + " left" + (it.daily != null ? ", now " + money(it.daily) : "") + "</span>";
+      } else if (it.spent == null) {
+        // No spend yet, so this is the figure to set the campaign up with: the whole budget over the whole run.
+        var run = it.start ? Math.round((it.end - it.start) / 86400000) + 1 : d;
+        if (run > 0) daily = money(rec / run) + '<span class="sub">over ' + run + (run === 1 ? " day" : " days") + (it.start ? "" : " from today") + "</span>";
+      }
     }
     var dates = (it.start || it.end) ? '<span class="sub">' + esc(shortDate(it.start)) + (it.end ? " to " + esc(shortDate(it.end)) : "") + "</span>" : "";
     h += '<tr class="' + (it.phantom ? "phantom" : "") + '">';
