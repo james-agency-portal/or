@@ -48,6 +48,8 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title{font-size:14px;font-weight:500;flex:1;display:flex;align-items:center;gap:9px;min-width:160px}
 .panel-title.link{cursor:pointer}
 .panel-title.link:hover{text-decoration:underline}
+.panel-note.done{color:#0F6E56;background:var(--green-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
+.btn:disabled{opacity:.6;cursor:default}
 .panel-note.stale{color:#633806;background:var(--amber-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
 
@@ -113,7 +115,8 @@ var DEFAULTS = {
   feePerCampaign: 500,      // management fee charged per campaign
   feeCap: 1500,             // most management we take per group, however many campaigns run
   spendBoardId: "18424974331", // board with live Meta spend, matched to this board by campaign name
-  expectedCampaigns: ""     // campaigns expected per month; blank = work it out from past months and the current pace
+  expectedCampaigns: "",    // campaigns expected per month; blank = work it out from past months and the current pace
+  hedge: 50                 // % weight given to campaigns that are forecast but haven't arrived yet
 };
 var SETTINGS_KEY = "billing-view-settings-v1";
 
@@ -148,6 +151,8 @@ var state = {
   plan: {},           // groupId -> { count, paid }
   forecasts: {},      // groupId -> saved forecast; only changes when someone clicks Re-forecast
   pendingReforecast: null,
+  reforecasting: null,     // groupId while a Re-forecast is running
+  reforecastResult: null,  // { gid, before, after } from the last click, shown as a confirmation
   showSettings: false,
   loading: true,
   error: null,
@@ -304,7 +309,7 @@ function loadBoard() {
       render();
     });
   }).catch(function (e) {
-    state.loading = false;
+    state.loading = false; state.reforecasting = null; state.pendingReforecast = null;
     state.error = "Could not load the board. Try refreshing. (" + (e.message || "unknown") + ")";
     render();
   });
@@ -357,7 +362,11 @@ function count1(n) { return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.rou
   takes over. What's already running is certain, so the forecast is that plus
   the campaigns still expected in the days left.
 
-  Management per campaign is then the capped monthly fee over that total.
+  Campaigns that are only forecast count at half weight (the hedge setting)
+  when the monthly fee is shared out. That way running campaigns give up some
+  management for the ones we expect, but not all of it: if the expected ones
+  arrive we end up holding a bit too much, which goes back into adspend as
+  credit, and if they don't we're short by less.
 */
 function liveForecast(g, countNow) {
   var s = state.settings, base = null, used = 0;
@@ -382,10 +391,14 @@ function liveForecast(g, countNow) {
     more = Math.max(0, rate * (1 - f));
   }
   var expected = Math.max(countNow + more, 1);
+  var hedge = num(s.hedge); hedge = hedge == null ? DEFAULTS.hedge : Math.max(0, Math.min(100, hedge));
+  var shareOver = Math.max(countNow + (expected - countNow) * hedge / 100, 1);
   return {
     expected: expected, more: expected - countNow, count: countNow, base: base, used: used,
     manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f,
-    feeEach: Math.round(dealFee(expected) / expected * 100) / 100,
+    hedge: hedge,
+    feeEach: Math.round(dealFee(shareOver) / shareOver * 100) / 100,
+    ifAllArrive: Math.round(dealFee(shareOver) / shareOver * expected * 100) / 100, owedIfAllArrive: dealFee(expected),
     at: Date.now()
   };
 }
@@ -397,7 +410,13 @@ function describeForecast(fc) {
   else t += ", day " + fc.day + " of " + fc.days;
   if (fc.manual) t += ". Expected total set in Settings";
   else if (fc.base != null) t += ". Past " + (fc.used === 1 ? "month" : fc.used + " months") + " average " + count1(fc.base);
-  t += ". Expecting " + (fc.more >= 0.05 ? "about " + count1(fc.more) + " more, " : "no more, ") + count1(fc.expected) + " in total, so " + money(fc.feeEach) + " management each.";
+  if (fc.more >= 0.05) {
+    t += ". Expecting about " + count1(fc.more) + " more, " + count1(fc.expected) + " in total";
+    t += fc.hedge < 100 ? ". Counting the expected ones at " + (fc.hedge === 50 ? "half" : fc.hedge + "%") + ", that's " : ", so ";
+    t += money(fc.feeEach) + " management each.";
+  } else {
+    t += ". Expecting no more, so " + money(fc.feeEach) + " management each.";
+  }
   return t;
 }
 
@@ -477,7 +496,7 @@ function loadForecasts() {
       if (!state.forecasts[gid] || (remote[gid].at || 0) >= (state.forecasts[gid].at || 0)) state.forecasts[gid] = remote[gid];
     });
   }).catch(function () {});
-  return Promise.race([shared, new Promise(function (r) { setTimeout(r, 2500); })]);
+  return Promise.race([shared, new Promise(function (r) { setTimeout(r, 1500); })]);
 }
 function saveForecasts() {
   var v = JSON.stringify(state.forecasts);
@@ -488,11 +507,13 @@ function saveForecasts() {
 /* Runs after every load: gives new groups a first forecast, and redoes the ones the button asked for. */
 function settleForecasts() {
   var redo = state.pendingReforecast, changed = false;
-  state.pendingReforecast = null;
+  state.pendingReforecast = null; state.reforecasting = null;
   state.board.groups.forEach(function (g) {
     var want = redo && (redo === "all" || redo === g.id);
     if (!want && state.forecasts[g.id]) return;
+    var before = state.forecasts[g.id] || null;
     state.forecasts[g.id] = liveForecast(g, realCount(g.id));
+    if (want) state.reforecastResult = { gid: g.id, before: before, after: state.forecasts[g.id] };
     changed = true;
   });
   if (changed) saveForecasts();
@@ -572,12 +593,14 @@ function campaignTable(a, opts) {
     h += '<tr class="' + (it.phantom ? "phantom" : "") + '">';
     h += '<td class="name">' + (it.phantom ? esc(it.name) : '<a data-item="' + esc(it.id) + '">' + esc(it.name) + "</a>") + " " + statusPill(it) + dates + "</td>";
     h += "<td>" + money(it.paid || 0) + "</td>";
-    h += "<td>" + (it.phantom ? "–" : money(it.adspend || 0)) + "</td>";
-    h += "<td>" + (it.phantom ? "–" : money((it.paid || 0) - (it.adspend || 0))) + "</td>";
+    // Only Amount Paid filled in: nothing to compare against yet, so just say what to set.
+    var unset = !it.phantom && it.adspend == null;
+    h += "<td>" + (it.phantom ? "–" : unset ? '<span class="flat">not set</span>' : money(it.adspend)) + "</td>";
+    h += "<td>" + (it.phantom || unset ? "–" : money((it.paid || 0) - it.adspend)) + "</td>";
     if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
     h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
     h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
-    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : changeCell(a, rec - (it.adspend || 0))) + "</td>";
+    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + "</td>";
     h += '<td class="rec">' + daily + "</td>";
     h += "</tr>";
   });
@@ -591,12 +614,30 @@ function changeCell(a, diff) {
   return Math.abs(diff) < 1 ? '<span class="flat">on forecast</span>' : signed(diff);
 }
 
+/* Says what the last Re-forecast click did, so it's obvious it ran even when the numbers didn't move. */
+function reforecastMsg(gid) {
+  var r = state.reforecastResult;
+  if (!r || r.gid !== gid) return "";
+  var b = r.before, a = r.after, t;
+  var time = new Date(a.at).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  if (b && Math.abs(b.feeEach - a.feeEach) < 0.005 && Math.abs(b.expected - a.expected) < 0.05) {
+    t = "Re-forecast at " + time + ". Nothing has moved since the last one, so it's still " + count1(a.expected) + " campaigns expected and " + money(a.feeEach) + " management each.";
+  } else {
+    t = "Re-forecast at " + time + ". " + (b ? "Was " + count1(b.expected) + " campaigns expected and " + money(b.feeEach) + " each. " : "") + "Now " + count1(a.expected) + " expected and " + money(a.feeEach) + " management each.";
+  }
+  return '<div class="panel-note done">' + esc(t) + "</div>";
+}
+
 function recNote(a) {
   if (!a.n) return "";
   var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
   if (!a.whatIf) {
     if (!a.needsChange) t += " Every campaign is already set to that.";
-    if (a.collected < a.fee - 1) t += " With only the " + a.n + " running that keeps " + money(a.collected) + " management against " + money(a.fee) + " owed, so it relies on the rest arriving.";
+    if (a.collected < a.fee - 1) {
+      t += " With only the " + a.n + " running that keeps " + money(a.collected) + " management against " + money(a.fee) + " owed.";
+      var extra = fc.ifAllArrive - fc.owedIfAllArrive;
+      if (fc.ifAllArrive != null && fc.more >= 0.05) t += " If the rest arrive it comes to about " + money(fc.ifAllArrive) + (extra > 1 ? ", which is " + money(extra) + " credit to put back into adspend." : ".");
+    }
     else if (a.collected > a.fee + 1) t += " That keeps " + money(a.collected) + " management against " + money(a.fee) + " owed, so " + money(a.collected - a.fee) + " could go back into adspend.";
   }
   var h = '<div class="panel-note">' + esc(t) + "</div>";
@@ -621,10 +662,11 @@ function groupPanel(g, opts) {
   h += '<div class="panel-title' + (opts.link ? " link" : "") + '"' + (opts.link ? ' data-tab="' + esc(g.id) + '"' : "") + '><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span>' + esc(g.title) + "</div>";
   var saved = state.forecasts[g.id];
   if (saved && saved.at) h += '<span class="stamp">Forecast from ' + esc(new Date(saved.at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })) + "</span>";
-  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '">Re-forecast</button>';
+  var busy = state.reforecasting === g.id;
+  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
   h += "</div>";
   if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
-  h += recNote(a) + campaignTable(a);
+  h += reforecastMsg(g.id) + recNote(a) + campaignTable(a);
   if (opts.planner) h += planner(g.id, a);
   h += "</div>";
   return h;
@@ -662,6 +704,7 @@ function settingsPanel() {
     '<div><label>Management fee per campaign ($)</label><input type="number" min="0" step="50" id="set-fee" value="' + esc(s.feePerCampaign) + '"></div>' +
     '<div><label>Maximum management per group ($)</label><input type="number" min="0" step="50" id="set-cap" value="' + esc(s.feeCap) + '"></div>' +
     '<div><label>Campaigns expected per month</label><input type="number" min="0" step="1" id="set-expected" value="' + esc(s.expectedCampaigns) + '" placeholder="Blank = forecast it"></div>' +
+    '<div><label>Weight for campaigns expected but not here yet (%)</label><input type="number" min="0" max="100" step="5" id="set-hedge" value="' + esc(s.hedge) + '"></div>' +
     '<div><label>Board ID to read live Meta spend from</label><input type="text" id="set-spend" value="' + esc(s.spendBoardId) + '" placeholder="Leave blank to turn off"></div>' +
     '</div><div class="settings-actions"><button class="btn btn-primary" data-settings-save>Save</button><button class="btn" data-settings-reset>Reset to defaults</button><span class="stamp">Saved in this browser only.</span></div></div>';
 }
@@ -713,8 +756,13 @@ root.addEventListener("click", function (e) {
     if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
     return;
   }
-  if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); window.scrollTo(0, 0); }
-  else if (t.hasAttribute("data-reforecast")) { state.pendingReforecast = t.getAttribute("data-reforecast"); loadBoard(); return; }
+  if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); state.reforecastResult = null; window.scrollTo(0, 0); }
+  else if (t.hasAttribute("data-reforecast")) {
+    if (state.reforecasting) return;
+    state.pendingReforecast = state.reforecasting = t.getAttribute("data-reforecast");
+    state.reforecastResult = null;
+    render(); loadBoard(); return;
+  }
   else if (t.hasAttribute("data-refresh")) { loadBoard(); return; }
   else if (t.hasAttribute("data-settings-toggle")) state.showSettings = !state.showSettings;
   else if (t.hasAttribute("data-plan-clear")) delete state.plan[state.tab];
@@ -727,7 +775,8 @@ root.addEventListener("click", function (e) {
       feePerCampaign: fee == null || fee < 0 ? DEFAULTS.feePerCampaign : fee,
       feeCap: cap == null || cap < 0 ? DEFAULTS.feeCap : cap,
       spendBoardId: document.getElementById("set-spend").value.replace(/[^0-9]/g, ""),
-      expectedCampaigns: num(document.getElementById("set-expected").value) || ""
+      expectedCampaigns: num(document.getElementById("set-expected").value) || "",
+      hedge: (function (v) { return v == null ? DEFAULTS.hedge : Math.max(0, Math.min(100, v)); })(num(document.getElementById("set-hedge").value))
     };
     saveSettings(state.settings); state.showSettings = false; loadBoard(); return;
   }
