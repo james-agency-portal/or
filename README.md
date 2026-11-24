@@ -45,7 +45,7 @@ Matched by title, case doesn't matter: `Amount Paid`, `Total Adspend Budget`, `S
 
 1. Developers → Create app → Features → add a **Board View**
 2. Deployment: **External hosting**, URL `https://<this site's Vercel domain>/billing/`
-3. OAuth & Permissions: add `boards:read`
+3. OAuth & Permissions: add `boards:read` and `boards:write` (write is only used by the Fill in / Update buttons, which set a campaign's adspend budget to the recommended figure)
 4. Open the billing board → add view → Apps → pick the app
 
 Open `/billing/?demo=1` in a normal browser tab to see it with made-up data.

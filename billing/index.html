@@ -49,6 +49,7 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title.link{cursor:pointer}
 .panel-title.link:hover{text-decoration:underline}
 .panel-note.done{color:#0F6E56;background:var(--green-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
+.btn-fill{display:block;margin:5px 0 0 auto;padding:3px 10px;font-size:11.5px}
 .btn:disabled{opacity:.6;cursor:default}
 .panel-note.stale{color:#633806;background:var(--amber-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
@@ -151,6 +152,8 @@ var state = {
   plan: {},           // groupId -> { count, paid }
   forecasts: {},      // groupId -> saved forecast; only changes when someone clicks Re-forecast
   pendingReforecast: null,
+  filling: null,           // item id while its adspend is being written to the board
+  writeError: null,
   reforecasting: null,     // groupId while a Re-forecast is running
   reforecastResult: null,  // { gid, before, after } from the last click, shown as a confirmation
   showSettings: false,
@@ -301,7 +304,7 @@ function loadBoard() {
           daily: live.daily == null ? null : live.daily
         };
       });
-      state.board = { name: meta.name, groups: meta.groups || [], items: items, missing: missing };
+      state.board = { name: meta.name, groups: meta.groups || [], items: items, missing: missing, adspendCol: ids.adspend };
       state.spendNote = spend.note;
       if (state.tab !== "all" && !state.board.groups.some(function (g) { return g.id === state.tab; })) state.tab = "all";
       settleForecasts();
@@ -600,7 +603,7 @@ function campaignTable(a, opts) {
     if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
     h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
     h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
-    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + "</td>";
+    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + fillButton(a, it, rec, unset) + "</td>";
     h += '<td class="rec">' + daily + "</td>";
     h += "</tr>";
   });
@@ -608,6 +611,44 @@ function campaignTable(a, opts) {
   if (a.hasSpend) h += "<td>" + money(a.spent) + "</td>";
   h += '<td class="rec">' + money(a.recSum) + '</td><td class="rec">' + money(a.paid - a.recSum) + '</td><td class="rec">' + signed(a.recSum - a.adspend) + '</td><td class="rec"></td></tr></tfoot></table></div>';
   return h;
+}
+
+/* Writes the recommended adspend into the board's adspend budget column. Not offered for finished campaigns or what-if rows. */
+function fillButton(a, it, rec, unset) {
+  if (it.phantom || a.whatIf || isFinished(it)) return "";
+  if (!unset && Math.abs(rec - (it.adspend || 0)) < 1) return "";
+  var busy = state.filling === it.id;
+  return '<button class="btn btn-fill" data-fill="' + esc(it.id) + '" data-value="' + (Math.round(rec * 100) / 100) + '"' + (unset ? "" : ' data-from="' + esc(it.adspend) + '"') + (state.filling ? " disabled" : "") + ">" +
+    (busy ? "Saving…" : unset ? "Fill in" : "Update") + "</button>";
+}
+
+function fillAdspend(itemId, value, from) {
+  var item = state.board.items.filter(function (it) { return it.id === itemId; })[0];
+  if (!item || state.filling) return;
+  if (demo) { item.adspend = value; render(); return; }
+  var col = state.board.adspendCol;
+  if (!col) return;
+  var ask = from == null ? Promise.resolve(true)
+    : monday.execute("confirm", { message: "Change the adspend budget for this campaign from " + money(from) + " to " + money(value) + "?", confirmButton: "Change it", cancelButton: "Cancel" })
+        .then(function (res) { return !!(res && res.data && res.data.confirm); });
+  ask.then(function (ok) {
+    if (!ok) return;
+    state.filling = itemId; state.writeError = null; render();
+    return api("mutation ($b: ID!, $i: ID!, $c: String!, $v: String!) { change_simple_column_value(board_id: $b, item_id: $i, column_id: $c, value: $v) { id } }",
+      { b: String(state.boardId), i: String(itemId), c: col, v: String(value) })
+      .then(function () {
+        state.filling = null;
+        try { monday.execute("notice", { message: "Adspend budget set to " + money(value), type: "success", timeout: 4000 }); } catch (e) {}
+        loadBoard();
+      });
+  }).catch(function (e) {
+    state.filling = null;
+    var msg = (e && e.message) || "unknown error";
+    state.writeError = /scope|permission|unauthori[sz]ed|not allowed/i.test(msg)
+      ? "monday blocked the change because the app is only allowed to read boards. Add the boards:write permission to the app in Developers, then try again. (" + msg + ")"
+      : "Couldn't write to the board. Nothing was changed. (" + msg + ")";
+    render();
+  });
 }
 
 function changeCell(a, diff) {
@@ -724,6 +765,7 @@ function render() {
 
   if (state.showSettings) h += settingsPanel();
   if (b.missing && b.missing.length) h += '<div class="warning">This board is missing a column called ' + esc(b.missing.join(" and ")) + ", so the numbers below will be empty. Add it (the name has to match) and hit Refresh.</div>";
+  if (state.writeError) h += '<div class="warning">' + esc(state.writeError) + "</div>";
   if (state.spendNote) h += '<div class="warning">' + esc(state.spendNote) + "</div>";
 
   h += '<div class="cat-tabs"><button class="cat-tab' + (state.tab === "all" ? " active" : "") + '" data-tab="all">Whole board</button>';
@@ -750,8 +792,12 @@ function render() {
 /* ---------- events ---------- */
 
 root.addEventListener("click", function (e) {
-  var t = e.target.closest("[data-tab],[data-item],[data-reforecast],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
+  var t = e.target.closest("[data-tab],[data-item],[data-fill],[data-reforecast],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
   if (!t) return;
+  if (t.hasAttribute("data-fill")) {
+    fillAdspend(t.getAttribute("data-fill"), num(t.getAttribute("data-value")), t.hasAttribute("data-from") ? num(t.getAttribute("data-from")) : null);
+    return;
+  }
   if (t.hasAttribute("data-item")) {
     if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
     return;
