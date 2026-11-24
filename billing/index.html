@@ -49,7 +49,9 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title.link{cursor:pointer}
 .panel-title.link:hover{text-decoration:underline}
 .panel-note.done{color:#0F6E56;background:var(--green-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
-.btn-fill{display:block;margin:5px 0 0 auto;padding:3px 10px;font-size:11.5px}
+.applybar{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 16px;border-top:0.5px solid var(--border);font-size:12.5px;color:var(--muted)}
+.btn-quiet{background:none;border-color:transparent;color:var(--muted);padding:6px 8px}
+.btn-quiet:hover{background:var(--bg);color:var(--text)}
 .btn:disabled{opacity:.6;cursor:default}
 .panel-note.stale{color:#633806;background:var(--amber-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
@@ -152,7 +154,7 @@ var state = {
   plan: {},           // groupId -> { count, paid }
   forecasts: {},      // groupId -> saved forecast; only changes when someone clicks Re-forecast
   pendingReforecast: null,
-  filling: null,           // item id while its adspend is being written to the board
+  filling: null,           // group id while its adspend changes are being written to the board
   writeError: null,
   reforecasting: null,     // groupId while a Re-forecast is running
   reforecastResult: null,  // { gid, before, after } from the last click, shown as a confirmation
@@ -426,13 +428,17 @@ function describeForecast(fc) {
 /*
   Recommended adspend and management for a group's campaigns.
 
-  Every campaign carries the same management (the saved forecast figure) and
-  the rest of what it paid is its adspend, so a campaign that paid more gets
-  more adspend.
+  The aim is to get it right when a campaign is set up and then leave it alone.
 
-  The saved forecast only moves when someone clicks Re-forecast, so these
-  numbers hold still as campaigns come in. The what-if row is the exception:
-  it shows a fresh forecast including the extra campaigns.
+  New campaigns (Amount Paid filled in, no adspend yet) get the forecast
+  management figure, and the rest of what they paid is adspend. If the
+  campaigns already set are holding more or less management than the forecast
+  calls for, the new ones take the difference, so the old ones don't move.
+
+  Campaigns already set are only touched when the group would otherwise be
+  short on management. Then the ones holding the least are raised first, which
+  changes as few campaigns as possible. Holding too much is fine: it shows as
+  credit and nothing is asked to change.
 
   Money already gone can't be moved: finished campaigns are held at what they
   spent (or their budget if we have no spend figure), and a running campaign
@@ -452,20 +458,64 @@ function allocate(items, g) {
   var fc = g ? (whatIf ? now : (state.forecasts[g.id] || now)) : null;
   var feeEach = fc ? fc.feeEach : (n ? fee / n : 0);
 
-  var rec = {}, why = {}, recSum = 0, needsChange = false, open = 0;
+  // Management the campaigns here should hold between them. Never more than the deal allows for this many.
+  var required = Math.min(feeEach * n, fee);
+
+  var rec = {}, why = {}, held = 0, fresh = [], movable = [];
   rows.forEach(function (it) {
-    var r;
     if (!it.phantom && isFinished(it)) {
-      r = it.spent != null ? it.spent : (it.adspend || 0);
+      rec[it.id] = it.spent != null ? it.spent : (it.adspend || 0);
       why[it.id] = it.spent != null ? "finished, held at spend" : "finished, held at budget";
+      held += (it.paid || 0) - rec[it.id];
+    } else if (it.phantom || it.adspend == null) {
+      fresh.push(it);
     } else {
-      var want = (it.paid || 0) - feeEach, floor = Math.max(0, it.spent || 0);
-      r = Math.max(want, floor);
-      if (floor > want + 0.005) why[it.id] = floor > 0 ? "already spent more" : "paid less than the management share";
-      else open++;
+      rec[it.id] = it.adspend;
+      held += (it.paid || 0) - it.adspend;
+      movable.push(it);
     }
-    rec[it.id] = r; recSum += r;
-    if (!it.phantom && Math.abs(r - (it.adspend || 0)) >= 1) needsChange = true;
+  });
+
+  // New campaigns share whatever management is still needed, each between nothing and the full per-campaign fee.
+  var freshFee = null;
+  if (fresh.length) {
+    var share = Math.max(0, Math.min((required - held) / fresh.length, state.settings.feePerCampaign));
+    fresh.forEach(function (it) {
+      var m = Math.min(share, it.paid || 0), floor = Math.max(0, it.spent || 0);
+      rec[it.id] = Math.max((it.paid || 0) - m, floor);
+      if (floor > (it.paid || 0) - m + 0.005) why[it.id] = "already spent more";
+      held += (it.paid || 0) - rec[it.id];
+      if (freshFee == null) freshFee = (it.paid || 0) - rec[it.id];
+    });
+  }
+
+  // Still short? Raise the campaigns holding the least management up to a common level, as far as their unspent budget allows.
+  var short = required - held, raised = 0;
+  if (short > 20 && movable.length) {   // small gaps aren't worth going back and changing budgets for
+    var m0 = {}, cap = {}, lo = Infinity, hi = 0;
+    movable.forEach(function (it) {
+      m0[it.id] = (it.paid || 0) - it.adspend;
+      cap[it.id] = Math.max(m0[it.id], (it.paid || 0) - Math.max(0, it.spent || 0));
+      lo = Math.min(lo, m0[it.id]); hi = Math.max(hi, cap[it.id]);
+    });
+    var gain = function (level) {
+      var g2 = 0;
+      movable.forEach(function (it) { g2 += Math.max(0, Math.min(level, cap[it.id]) - m0[it.id]); });
+      return g2;
+    };
+    var a0 = lo, b0 = hi;
+    if (gain(hi) > short) { for (var k = 0; k < 60; k++) { var mid = (a0 + b0) / 2; if (gain(mid) >= short) b0 = mid; else a0 = mid; } }
+    movable.forEach(function (it) {
+      var m = Math.max(m0[it.id], Math.min(b0, cap[it.id]));
+      if (m - m0[it.id] >= 0.005) { rec[it.id] = (it.paid || 0) - m; why[it.id] = "trimmed to cover management"; raised++; held += m - m0[it.id]; }
+    });
+    short = required - held;
+  }
+
+  var recSum = 0, changes = 0;
+  rows.forEach(function (it) {
+    recSum += rec[it.id];
+    if (!it.phantom && !isFinished(it) && (it.adspend == null || Math.abs(rec[it.id] - it.adspend) >= 1)) changes++;
   });
 
   return {
@@ -475,10 +525,14 @@ function allocate(items, g) {
     credit: paid - adspend - fee,      // + = money not yet put into adspend, - = over-allocated
     blendedFee: n ? fee / n : 0,
     feeRate: paid ? fee / paid : 0,
-    rec: rec, why: why, recSum: recSum, open: open, needsChange: needsChange,
+    rec: rec, why: why, recSum: recSum,
+    required: required, short: Math.max(0, short), raised: raised, fresh: fresh.length, freshFee: freshFee, set: movable.length,
+    changes: changes, needsChange: changes > 0,
     collected: paid - recSum,          // management we'd keep if the recommendations were applied and nothing else changed
     forecast: fc, whatIf: whatIf,
-    stale: !!(fc && now && !whatIf && Math.abs(now.feeEach - fc.feeEach) >= 1), now: now
+    // Re-forecasting is for emergencies. Only flag it when the month has gone well off the original forecast:
+    // out by a campaign and a half or more, and enough to move management per campaign by $50.
+    stale: !!(fc && now && !whatIf && Math.abs(now.expected - fc.expected) >= 1.5 && Math.abs(now.feeEach - fc.feeEach) >= 50), now: now
   };
 }
 
@@ -603,7 +657,7 @@ function campaignTable(a, opts) {
     if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
     h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
     h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
-    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + fillButton(a, it, rec, unset) + "</td>";
+    h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + "</td>";
     h += '<td class="rec">' + daily + "</td>";
     h += "</tr>";
   });
@@ -613,46 +667,68 @@ function campaignTable(a, opts) {
   return h;
 }
 
-/* Writes the recommended adspend into the board's adspend budget column. Not offered for finished campaigns or what-if rows. */
-function fillButton(a, it, rec, unset) {
-  if (it.phantom || a.whatIf || isFinished(it)) return "";
-  if (!unset && Math.abs(rec - (it.adspend || 0)) < 1) return "";
-  var busy = state.filling === it.id;
-  return '<button class="btn btn-fill" data-fill="' + esc(it.id) + '" data-value="' + (Math.round(rec * 100) / 100) + '"' + (unset ? "" : ' data-from="' + esc(it.adspend) + '"') + (state.filling ? " disabled" : "") + ">" +
-    (busy ? "Saving…" : unset ? "Fill in" : "Update") + "</button>";
+/* Rows where the board's adspend budget differs from the recommendation. Finished campaigns and what-if rows are never written. */
+function pendingChanges(a) {
+  if (a.whatIf) return [];
+  return a.rows.filter(function (it) {
+    return !it.phantom && !isFinished(it) && (it.adspend == null || Math.abs(a.rec[it.id] - it.adspend) >= 1);
+  }).map(function (it) { return { id: it.id, value: Math.round(a.rec[it.id] * 100) / 100, from: it.adspend, item: it }; });
 }
 
-function fillAdspend(itemId, value, from) {
-  var item = state.board.items.filter(function (it) { return it.id === itemId; })[0];
-  if (!item || state.filling) return;
-  if (demo) { item.adspend = value; render(); return; }
+/* The one button: writes every recommended adspend for the group into the board in one go. */
+function applyBar(gid, a) {
+  var list = pendingChanges(a);
+  if (!list.length) return "";
+  var fills = list.filter(function (c) { return c.from == null; }).length, edits = list.length - fills;
+  var what = [];
+  if (fills) what.push("fill in " + fills + " new");
+  if (edits) what.push("change " + edits + " already set");
+  var busy = state.filling === gid;
+  return '<div class="applybar"><span>This will ' + esc(what.join(" and ")) + '.</span><button class="btn btn-primary" data-apply="' + esc(gid) + '"' + (state.filling ? " disabled" : "") + ">" +
+    (busy ? "Saving…" : "Apply " + (list.length === 1 ? "change" : "all " + list.length + " changes")) + "</button></div>";
+}
+
+function applyAll(gid) {
+  var g = state.board.groups.filter(function (x) { return x.id === gid; })[0];
+  if (!g || state.filling) return;
+  var list = pendingChanges(allocate(state.board.items.filter(function (it) { return it.groupId === gid; }), g));
+  if (!list.length) return;
+  if (demo) { list.forEach(function (c) { c.item.adspend = c.value; }); render(); return; }
   var col = state.board.adspendCol;
   if (!col) return;
-  var ask = from == null ? Promise.resolve(true)
-    : monday.execute("confirm", { message: "Change the adspend budget for this campaign from " + money(from) + " to " + money(value) + "?", confirmButton: "Change it", cancelButton: "Cancel" })
+  var edits = list.filter(function (c) { return c.from != null; }).length;
+  var ask = !edits ? Promise.resolve(true)
+    : monday.execute("confirm", { message: "This changes the adspend budget on " + edits + (edits === 1 ? " campaign" : " campaigns") + " that already " + (edits === 1 ? "has" : "have") + " one" + (list.length > edits ? ", and fills in " + (list.length - edits) + " new" : "") + ". Go ahead?", confirmButton: "Apply", cancelButton: "Cancel" })
         .then(function (res) { return !!(res && res.data && res.data.confirm); });
+  var done = 0;
   ask.then(function (ok) {
     if (!ok) return;
-    state.filling = itemId; state.writeError = null; render();
-    return api("mutation ($b: ID!, $i: ID!, $c: String!, $v: String!) { change_simple_column_value(board_id: $b, item_id: $i, column_id: $c, value: $v) { id } }",
-      { b: String(state.boardId), i: String(itemId), c: col, v: String(value) })
-      .then(function () {
-        state.filling = null;
-        try { monday.execute("notice", { message: "Adspend budget set to " + money(value), type: "success", timeout: 4000 }); } catch (e) {}
-        loadBoard();
+    state.filling = gid; state.writeError = null; render();
+    var chain = Promise.resolve();
+    list.forEach(function (c) {
+      chain = chain.then(function () {
+        return api("mutation ($b: ID!, $i: ID!, $c: String!, $v: String!) { change_simple_column_value(board_id: $b, item_id: $i, column_id: $c, value: $v) { id } }",
+          { b: String(state.boardId), i: String(c.id), c: col, v: String(c.value) }).then(function () { done++; });
       });
+    });
+    return chain.then(function () {
+      state.filling = null;
+      try { monday.execute("notice", { message: "Adspend budget updated on " + done + (done === 1 ? " campaign" : " campaigns"), type: "success", timeout: 4000 }); } catch (e) {}
+      loadBoard();
+    });
   }).catch(function (e) {
     state.filling = null;
     var msg = (e && e.message) || "unknown error";
+    var sofar = done ? done + " of " + list.length + " were saved before it stopped. " : "Nothing was changed. ";
     state.writeError = /scope|permission|unauthori[sz]ed|not allowed/i.test(msg)
-      ? "monday blocked the change because the app is only allowed to read boards. Add the boards:write permission to the app in Developers, then try again. (" + msg + ")"
-      : "Couldn't write to the board. Nothing was changed. (" + msg + ")";
-    render();
+      ? "monday blocked the change because the app is only allowed to read boards. " + sofar + "Add the boards:write permission to the app in Developers, then try again. (" + msg + ")"
+      : "Couldn't write to the board. " + sofar + "(" + msg + ")";
+    if (done) loadBoard(); else render();
   });
 }
 
 function changeCell(a, diff) {
-  return Math.abs(diff) < 1 ? '<span class="flat">on forecast</span>' : signed(diff);
+  return Math.abs(diff) < 1 ? '<span class="flat">no change</span>' : signed(diff);
 }
 
 /* Says what the last Re-forecast click did, so it's obvious it ran even when the numbers didn't move. */
@@ -672,17 +748,22 @@ function reforecastMsg(gid) {
 function recNote(a) {
   if (!a.n) return "";
   var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
+  if (a.fresh && a.freshFee != null && Math.abs(a.freshFee - fc.feeEach) >= 1) {
+    t += " The campaigns already set hold " + (a.freshFee < fc.feeEach ? "more" : "less") + " than that between them, so " + (a.whatIf ? "new ones would go in" : "the new " + (a.fresh === 1 ? "one goes" : "ones go") + " in") + " at " + money(a.freshFee) + " to even it out.";
+  }
   if (!a.whatIf) {
-    if (!a.needsChange) t += " Every campaign is already set to that.";
-    if (a.collected < a.fee - 1) {
-      t += " With only the " + a.n + " running that keeps " + money(a.collected) + " management against " + money(a.fee) + " owed.";
-      var extra = fc.ifAllArrive - fc.owedIfAllArrive;
-      if (fc.ifAllArrive != null && fc.more >= 0.05) t += " If the rest arrive it comes to about " + money(fc.ifAllArrive) + (extra > 1 ? ", which is " + money(extra) + " credit to put back into adspend." : ".");
-    }
-    else if (a.collected > a.fee + 1) t += " That keeps " + money(a.collected) + " management against " + money(a.fee) + " owed, so " + money(a.collected - a.fee) + " could go back into adspend.";
+    if (a.raised) t += " Management was going to come up short, so " + a.raised + (a.raised === 1 ? " campaign" : " campaigns") + " already set " + (a.raised === 1 ? "needs" : "need") + " to give some adspend back, starting with the ones holding the least management.";
+    else if (a.set) t += " Nothing already set needs to change.";
+    if (a.short > 1) t += " Even so it's " + money(a.short) + " short, because the rest has already been spent.";
+    if (a.collected > a.fee + 1) t += " Management held is " + money(a.collected - a.fee) + " over what's owed today, which sits as credit.";
+    else if (a.collected < a.fee - 1 && fc.more >= 0.05) t += " Holding " + money(a.collected) + " against " + money(a.fee) + " owed for now. The campaigns still expected make up the rest.";
   }
   var h = '<div class="panel-note">' + esc(t) + "</div>";
-  if (a.stale) h += '<div class="panel-note stale">Things have moved since this forecast. Right now it would be ' + esc(count1(a.now.expected)) + " campaigns and " + esc(money(a.now.feeEach)) + " each. Click Re-forecast to update the recommendations.</div>";
+  if (a.stale) {
+    h += '<div class="panel-note stale">This month is well off the forecast. It expected about ' + esc(count1(fc.expected)) + " campaigns and it now looks like " + esc(count1(a.now.expected)) +
+      (a.now.expected < fc.expected ? ", so management is on track to come up short" : ", so more management is being held than needed") +
+      ". Re-forecast to reset it to " + esc(money(a.now.feeEach)) + " each.</div>";
+  }
   return h;
 }
 
@@ -690,7 +771,7 @@ function planner(gid, a) {
   var p = state.plan[gid] || { count: 0, paid: "" };
   var s = state.settings, res = "";
   if (p.count > 0) {
-    res = '<span class="result">' + a.n + " running, " + count1(a.forecast.expected) + " expected: " + money(a.forecast.feeEach) + " management each</span>";
+    res = '<span class="result">' + a.n + " running, " + count1(a.forecast.expected) + " expected: new ones at " + money(a.freshFee != null ? a.freshFee : a.forecast.feeEach) + " management</span>";
   }
   return '<div class="planner"><span>What if we add</span><input type="number" min="0" max="20" step="1" data-plan="count" value="' + esc(p.count || "") + '" placeholder="0">' +
     '<span>more campaigns paying</span><input type="number" min="0" step="50" data-plan="paid" value="' + esc(p.paid) + '" placeholder="$ each"><span>each?</span>' +
@@ -704,10 +785,12 @@ function groupPanel(g, opts) {
   var saved = state.forecasts[g.id];
   if (saved && saved.at) h += '<span class="stamp">Forecast from ' + esc(new Date(saved.at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })) + "</span>";
   var busy = state.reforecasting === g.id;
-  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
+  // Quiet by default. It only stands out when the month has gone far enough off to need it.
+  h += '<button class="btn' + (a.stale ? " btn-primary" : " btn-quiet") + '" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
   h += "</div>";
   if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
   h += reforecastMsg(g.id) + recNote(a) + campaignTable(a);
+  h += applyBar(g.id, a);
   if (opts.planner) h += planner(g.id, a);
   h += "</div>";
   return h;
@@ -792,12 +875,9 @@ function render() {
 /* ---------- events ---------- */
 
 root.addEventListener("click", function (e) {
-  var t = e.target.closest("[data-tab],[data-item],[data-fill],[data-reforecast],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
+  var t = e.target.closest("[data-tab],[data-item],[data-apply],[data-reforecast],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
   if (!t) return;
-  if (t.hasAttribute("data-fill")) {
-    fillAdspend(t.getAttribute("data-fill"), num(t.getAttribute("data-value")), t.hasAttribute("data-from") ? num(t.getAttribute("data-from")) : null);
-    return;
-  }
+  if (t.hasAttribute("data-apply")) { applyAll(t.getAttribute("data-apply")); return; }
   if (t.hasAttribute("data-item")) {
     if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
     return;

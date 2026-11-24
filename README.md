@@ -28,12 +28,12 @@ It gives one tab per group plus a whole-board tab, and for each it shows:
 - total paid, adspend budgeted, management owed, and whether the client is in credit or over-allocated
 - live Meta spend, read from the Social Campaigns board by matching campaign names
 - a forecast of how many campaigns the month will end up with, and the management each one should carry
-- a recommended adspend and management figure per campaign: management is the same for every campaign and the rest of each payment goes to adspend
+- a recommended adspend and management figure per campaign. New campaigns get the forecast management and the rest of their payment as adspend. Campaigns already set are left alone unless management would come up short
 - a "what if we add more campaigns" row for planning
 
 Management is a flat fee per campaign up to a cap per group (defaults 500 and 1500, change them under Settings in the view). Groups are months, named like "November 2026".
 
-The forecast blends a weighted average of the last three months' campaign counts with this month's pace, leaning on the pace more as the month goes on. Campaigns that are forecast but haven't arrived count at half weight when the fee is shared out (changeable in Settings), so the view errs towards holding slightly too much management, which goes back into adspend as credit. It is saved and holds still until someone clicks **Re-forecast** on the group, so recommendations don't shift every time a campaign is added. The view says when the saved forecast has drifted from what it would be now.
+The forecast blends a weighted average of the last three months' campaign counts with this month's pace, leaning on the pace more as the month goes on. Campaigns that are forecast but haven't arrived count at half weight when the fee is shared out (changeable in Settings), so the view errs towards holding slightly too much management, which goes back into adspend as credit. It is saved and holds still until someone clicks **Re-forecast** on the group, so recommendations don't shift every time a campaign is added. Re-forecasting is meant for emergencies: the button stays quiet, and the view only prompts for it when the month has gone well off the original forecast (out by a campaign and a half or more).
 
 Finished campaigns are held at what they actually spent, and a running campaign is never recommended less than it has already spent.
 
@@ -45,7 +45,7 @@ Matched by title, case doesn't matter: `Amount Paid`, `Total Adspend Budget`, `S
 
 1. Developers → Create app → Features → add a **Board View**
 2. Deployment: **External hosting**, URL `https://<this site's Vercel domain>/billing/`
-3. OAuth & Permissions: add `boards:read` and `boards:write` (write is only used by the Fill in / Update buttons, which set a campaign's adspend budget to the recommended figure)
+3. OAuth & Permissions: add `boards:read` and `boards:write` (write is only used by the Apply button, which sets adspend budgets to the recommended figures)
 4. Open the billing board → add view → Apps → pick the app
 
 Open `/billing/?demo=1` in a normal browser tab to see it with made-up data.
