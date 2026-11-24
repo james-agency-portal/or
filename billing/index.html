@@ -490,6 +490,26 @@ function describeForecast(fc) {
 }
 
 /*
+  The note for a saved forecast. The forecast itself holds still, but the count
+  and the day are today's, so it never reads as out of date.
+*/
+function describeSaved(fc, now) {
+  if (!now || (now.count === fc.count && now.day === fc.day)) return describeForecast(fc);
+  var t = now.count + " running";
+  if (now.f >= 1) t += ", month finished";
+  else if (now.f <= 0) t += ", month not started";
+  else t += ", day " + now.day + " of " + now.days;
+  var made = fc.at ? new Date(fc.at).toLocaleDateString("en-AU", { day: "numeric", month: "short" }) : "earlier";
+  var left = fc.expected - now.count;
+  t += ". The forecast from " + made + " (" + fc.count + " running then) expects " + count1(fc.expected) + " for the month";
+  if (left >= 0.5) t += ", so about " + count1(left) + " more";
+  else if (left > -0.5) t += ", which is where it is now";
+  else t += ", and " + count1(-left) + " more than that " + (Math.abs(left) < 1.5 ? "has" : "have") + " come in";
+  t += ". Management is " + money(fc.feeEach) + " each.";
+  return t;
+}
+
+/*
   Recommended adspend and management for a group's campaigns.
 
   The aim is to get it right when a campaign is set up and then leave it alone.
@@ -879,7 +899,7 @@ function reforecastMsg(gid) {
 
 function recNote(a) {
   if (!a.n) return "";
-  var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
+  var fc = a.forecast, t = a.whatIf ? "What if: " + describeForecast(fc) : describeSaved(fc, a.now);
   if (a.placed) {
     var who = a.fresh ? (a.fresh === 1 ? "the new campaign" : "the " + a.fresh + " new campaigns") : "the campaigns here";
     t += a.placed > 0 ? " Earlier months left " + money(a.placed) + " credit, so that is added to the adspend of " + who + "."
