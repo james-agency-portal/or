@@ -48,6 +48,8 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title{font-size:14px;font-weight:500;flex:1;display:flex;align-items:center;gap:9px;min-width:160px}
 .panel-title.link{cursor:pointer}
 .panel-title.link:hover{text-decoration:underline}
+.panel-note.done{color:#0F6E56;background:var(--green-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
+.btn:disabled{opacity:.6;cursor:default}
 .panel-note.stale{color:#633806;background:var(--amber-light);margin:0 16px 12px;padding:8px 12px;border-radius:8px}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
 
@@ -148,6 +150,8 @@ var state = {
   plan: {},           // groupId -> { count, paid }
   forecasts: {},      // groupId -> saved forecast; only changes when someone clicks Re-forecast
   pendingReforecast: null,
+  reforecasting: null,     // groupId while a Re-forecast is running
+  reforecastResult: null,  // { gid, before, after } from the last click, shown as a confirmation
   showSettings: false,
   loading: true,
   error: null,
@@ -304,7 +308,7 @@ function loadBoard() {
       render();
     });
   }).catch(function (e) {
-    state.loading = false;
+    state.loading = false; state.reforecasting = null; state.pendingReforecast = null;
     state.error = "Could not load the board. Try refreshing. (" + (e.message || "unknown") + ")";
     render();
   });
@@ -477,7 +481,7 @@ function loadForecasts() {
       if (!state.forecasts[gid] || (remote[gid].at || 0) >= (state.forecasts[gid].at || 0)) state.forecasts[gid] = remote[gid];
     });
   }).catch(function () {});
-  return Promise.race([shared, new Promise(function (r) { setTimeout(r, 2500); })]);
+  return Promise.race([shared, new Promise(function (r) { setTimeout(r, 1500); })]);
 }
 function saveForecasts() {
   var v = JSON.stringify(state.forecasts);
@@ -488,11 +492,13 @@ function saveForecasts() {
 /* Runs after every load: gives new groups a first forecast, and redoes the ones the button asked for. */
 function settleForecasts() {
   var redo = state.pendingReforecast, changed = false;
-  state.pendingReforecast = null;
+  state.pendingReforecast = null; state.reforecasting = null;
   state.board.groups.forEach(function (g) {
     var want = redo && (redo === "all" || redo === g.id);
     if (!want && state.forecasts[g.id]) return;
+    var before = state.forecasts[g.id] || null;
     state.forecasts[g.id] = liveForecast(g, realCount(g.id));
+    if (want) state.reforecastResult = { gid: g.id, before: before, after: state.forecasts[g.id] };
     changed = true;
   });
   if (changed) saveForecasts();
@@ -591,6 +597,20 @@ function changeCell(a, diff) {
   return Math.abs(diff) < 1 ? '<span class="flat">on forecast</span>' : signed(diff);
 }
 
+/* Says what the last Re-forecast click did, so it's obvious it ran even when the numbers didn't move. */
+function reforecastMsg(gid) {
+  var r = state.reforecastResult;
+  if (!r || r.gid !== gid) return "";
+  var b = r.before, a = r.after, t;
+  var time = new Date(a.at).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  if (b && Math.abs(b.feeEach - a.feeEach) < 0.005 && Math.abs(b.expected - a.expected) < 0.05) {
+    t = "Re-forecast at " + time + ". Nothing has moved since the last one, so it's still " + count1(a.expected) + " campaigns expected and " + money(a.feeEach) + " management each.";
+  } else {
+    t = "Re-forecast at " + time + ". " + (b ? "Was " + count1(b.expected) + " campaigns expected and " + money(b.feeEach) + " each. " : "") + "Now " + count1(a.expected) + " expected and " + money(a.feeEach) + " management each.";
+  }
+  return '<div class="panel-note done">' + esc(t) + "</div>";
+}
+
 function recNote(a) {
   if (!a.n) return "";
   var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
@@ -621,10 +641,11 @@ function groupPanel(g, opts) {
   h += '<div class="panel-title' + (opts.link ? " link" : "") + '"' + (opts.link ? ' data-tab="' + esc(g.id) + '"' : "") + '><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span>' + esc(g.title) + "</div>";
   var saved = state.forecasts[g.id];
   if (saved && saved.at) h += '<span class="stamp">Forecast from ' + esc(new Date(saved.at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })) + "</span>";
-  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '">Re-forecast</button>';
+  var busy = state.reforecasting === g.id;
+  h += '<button class="btn btn-primary" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
   h += "</div>";
   if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
-  h += recNote(a) + campaignTable(a);
+  h += reforecastMsg(g.id) + recNote(a) + campaignTable(a);
   if (opts.planner) h += planner(g.id, a);
   h += "</div>";
   return h;
@@ -713,8 +734,13 @@ root.addEventListener("click", function (e) {
     if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
     return;
   }
-  if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); window.scrollTo(0, 0); }
-  else if (t.hasAttribute("data-reforecast")) { state.pendingReforecast = t.getAttribute("data-reforecast"); loadBoard(); return; }
+  if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); state.reforecastResult = null; window.scrollTo(0, 0); }
+  else if (t.hasAttribute("data-reforecast")) {
+    if (state.reforecasting) return;
+    state.pendingReforecast = state.reforecasting = t.getAttribute("data-reforecast");
+    state.reforecastResult = null;
+    render(); loadBoard(); return;
+  }
   else if (t.hasAttribute("data-refresh")) { loadBoard(); return; }
   else if (t.hasAttribute("data-settings-toggle")) state.showSettings = !state.showSettings;
   else if (t.hasAttribute("data-plan-clear")) delete state.plan[state.tab];
