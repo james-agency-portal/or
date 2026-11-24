@@ -49,9 +49,6 @@ button,input,select{font-family:var(--font);font-size:inherit;color:inherit}
 .panel-title.link{cursor:pointer}
 .panel-title.link:hover{text-decoration:underline}
 .panel-note{font-size:12px;color:var(--muted);padding:0 16px 12px;line-height:1.55}
-.seg{display:inline-flex;border:0.5px solid var(--border);border-radius:8px;overflow:hidden}
-.seg button{font-size:12px;font-weight:500;padding:5px 12px;border:none;background:var(--white);color:var(--muted);cursor:pointer}
-.seg button.active{background:var(--text);color:#fff}
 
 .tbl-scroll{overflow-x:auto;border-top:0.5px solid var(--border)}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -146,7 +143,6 @@ var state = {
   board: null,        // { name, groups:[{id,title,color}], items:[...] }
   spendNote: null,
   tab: "all",
-  mode: "weighted",   // "weighted" (scales with what each campaign paid) | "even"
   plan: {},           // groupId -> { count, paid }
   showSettings: false,
   loading: true,
@@ -324,15 +320,15 @@ function dealFee(n) {
 
   pool = total paid - management (fee per campaign, capped per group)
 
-  "even"      every campaign gets the same adspend
-  "weighted"  adspend in proportion to what each campaign paid
+  Each campaign gets adspend in proportion to what it paid, so one that paid
+  more is recommended more.
 
   Money already gone can't be moved, so finished campaigns are held at what
   they actually spent (or their budget if we have no spend figure), and a
   running campaign is never recommended less than it has already spent.
   Whatever those leave is shared among the rest.
 */
-function allocate(items, mode) {
+function allocate(items) {
   var rows = items.filter(counted);
   var n = rows.length;
   var paid = 0, adspend = 0, spent = 0, hasSpend = false;
@@ -357,12 +353,12 @@ function allocate(items, mode) {
     var lockedSum = 0, weightSum = 0;
     rows.forEach(function (it) {
       if (it.id in locked) lockedSum += locked[it.id];
-      else weightSum += mode === "weighted" ? (it.paid || 0) : 1;
+      else weightSum += it.paid || 0;
     });
     var remaining = pool - lockedSum;
     rows.forEach(function (it) {
       if (it.id in locked) { rec[it.id] = locked[it.id]; return; }
-      var w = mode === "weighted" ? (it.paid || 0) : 1;
+      var w = it.paid || 0;
       rec[it.id] = weightSum > 0 ? Math.max(0, remaining) * w / weightSum : 0;
     });
     rows.forEach(function (it) {
@@ -370,10 +366,10 @@ function allocate(items, mode) {
       if (it.spent > rec[it.id] + 0.005) { locked[it.id] = it.spent; why[it.id] = "already spent more"; changed = true; }
     });
   }
-  var recSum = 0, open = 0, openShare = null, openPaid = 0, openRec = 0;
+  var recSum = 0, open = 0, openPaid = 0, openRec = 0;
   rows.forEach(function (it) {
     recSum += rec[it.id];
-    if (!(it.id in locked)) { open++; openPaid += it.paid || 0; openRec += rec[it.id]; if (openShare == null) openShare = rec[it.id]; }
+    if (!(it.id in locked)) { open++; openPaid += it.paid || 0; openRec += rec[it.id]; }
   });
 
   return {
@@ -385,7 +381,7 @@ function allocate(items, mode) {
     feeRate: paid ? fee / paid : 0,
     rec: rec, why: why, recSum: recSum,
     shortfall: recSum - pool,          // > 0 when locked spend already exceeds the pool
-    open: open, openShare: mode === "even" ? openShare : null,
+    open: open,
     openRate: openPaid > 0 ? openRec / openPaid : null   // adspend per dollar paid, for campaigns that can still change
   };
 }
@@ -475,21 +471,12 @@ function campaignTable(a, opts) {
   return h;
 }
 
-function modeSwitch() {
-  return '<div class="seg"><button data-mode="weighted" class="' + (state.mode === "weighted" ? "active" : "") + '">Scaled by paid</button>' +
-    '<button data-mode="even" class="' + (state.mode === "even" ? "active" : "") + '">Even split</button></div>';
-}
-
 function recNote(a) {
   if (!a.n) return "";
   var s = state.settings, t;
   t = money(a.paid) + " paid less " + money(a.fee) + " management leaves " + money(a.pool) + " for adspend. ";
-  if (state.mode === "even") {
-    t += a.open ? "Split evenly that is " + money(a.openShare) + " each" + (a.open < a.n ? " across the " + a.open + " that can still change" : "") + "." : "Every campaign here is finished, so nothing can move.";
-  } else {
-    t += !a.open ? "Every campaign here is finished, so nothing can move."
-      : "Shared in proportion to what each campaign paid" + (a.openRate != null ? ", so each gets " + (a.openRate * 100).toFixed(1) + "% of its payment as adspend" : "") + (a.open < a.n ? " (across the " + a.open + " that can still change)" : "") + ".";
-  }
+  t += !a.open ? "Every campaign here is finished, so nothing can move."
+    : "Shared in proportion to what each campaign paid" + (a.openRate != null ? ", so each gets " + (a.openRate * 100).toFixed(1) + "% of its payment as adspend" : "") + (a.open < a.n ? " (across the " + a.open + " that can still change)" : "") + ".";
   t += " Management averages " + money(a.blendedFee) + " a campaign";
   if (a.n * s.feePerCampaign > s.feeCap) t += ", down from " + money(s.feePerCampaign) + " because the cap has kicked in";
   t += ".";
@@ -501,8 +488,7 @@ function planner(gid, a) {
   var p = state.plan[gid] || { count: 0, paid: "" };
   var s = state.settings, res = "";
   if (p.count > 0) {
-    res = '<span class="result">' + a.n + " campaigns: " + money(a.fee) + " management (" + money(a.blendedFee) + " each)" +
-      (state.mode === "even" && a.open ? ", " + money(a.openShare) + " adspend each" : "") + "</span>";
+    res = '<span class="result">' + a.n + " campaigns: " + money(a.fee) + " management (" + money(a.blendedFee) + " each)" + "</span>";
   }
   return '<div class="planner"><span>What if we add</span><input type="number" min="0" max="20" step="1" data-plan="count" value="' + esc(p.count || "") + '" placeholder="0">' +
     '<span>more campaigns paying</span><input type="number" min="0" step="50" data-plan="paid" value="' + esc(p.paid) + '" placeholder="$ each"><span>each?</span>' +
@@ -510,10 +496,9 @@ function planner(gid, a) {
 }
 
 function groupPanel(g, opts) {
-  var a = allocate(groupItems(g.id), state.mode);
+  var a = allocate(groupItems(g.id));
   var h = '<div class="panel"><div class="panel-head">';
   h += '<div class="panel-title' + (opts.link ? " link" : "") + '"' + (opts.link ? ' data-tab="' + esc(g.id) + '"' : "") + '><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span>' + esc(g.title) + "</div>";
-  if (opts.showMode) h += modeSwitch();
   h += "</div>";
   if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
   h += recNote(a) + campaignTable(a);
@@ -523,9 +508,9 @@ function groupPanel(g, opts) {
 }
 
 function summaryTable(groups) {
-  var h = '<div class="panel"><div class="panel-head"><div class="panel-title">Groups</div>' + modeSwitch() + '</div><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Campaigns</th><th>Paid</th><th>Adspend</th><th>Management</th><th>Credit</th><th class="rec">Adspend pool</th></tr></thead><tbody>';
+  var h = '<div class="panel"><div class="panel-head"><div class="panel-title">Groups</div></div><div class="tbl-scroll"><table><thead><tr><th>Group</th><th>Campaigns</th><th>Paid</th><th>Adspend</th><th>Management</th><th>Credit</th><th class="rec">Adspend pool</th></tr></thead><tbody>';
   groups.forEach(function (g) {
-    var a = allocate(groupItems(g.id), "even");
+    var a = allocate(groupItems(g.id));
     var credit = Math.abs(a.credit) < 0.005 ? '<span class="flat">balanced</span>' : (a.credit > 0 ? '<span class="up">' + money(a.credit) + " under</span>" : '<span class="down">' + money(-a.credit) + " over</span>");
     h += '<tr class="clickable" data-tab="' + esc(g.id) + '"><td class="name"><span class="sdot" style="background:' + esc(g.color || "#888") + '"></span> ' + esc(g.title) + "</td><td>" + a.n + "</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.fee) + "</td><td>" + credit + '</td><td class="rec">' + (a.n ? money(a.pool) : "–") + "</td></tr>";
   });
@@ -537,7 +522,7 @@ function summaryTable(groups) {
 function boardTotals(groups) {
   var t = { n: 0, paid: 0, adspend: 0, spent: 0, hasSpend: false, fee: 0 };
   groups.forEach(function (g) {
-    var a = allocate(state.board.items.filter(function (it) { return it.groupId === g.id; }), "even");
+    var a = allocate(state.board.items.filter(function (it) { return it.groupId === g.id; }));
     t.n += a.n; t.paid += a.paid; t.adspend += a.adspend; t.fee += a.fee;
     if (a.hasSpend) { t.spent += a.spent; t.hasSpend = true; }
   });
@@ -583,13 +568,13 @@ function render() {
   if (state.tab === "all") {
     h += cards(boardTotals(groups), groups.length);
     if (groups.length > 1) h += summaryTable(groups);
-    groups.forEach(function (g, i) { h += groupPanel(g, { link: true, showMode: groups.length === 1 && i === 0 }); });
+    groups.forEach(function (g, i) { h += groupPanel(g, { link: true }); });
     if (!groups.length) h += '<div class="empty">This board has no groups yet.</div>';
   } else {
     var g = groups.filter(function (x) { return x.id === state.tab; })[0];
-    var real = allocate(b.items.filter(function (it) { return it.groupId === g.id; }), state.mode);
+    var real = allocate(b.items.filter(function (it) { return it.groupId === g.id; }));
     h += cards(real, 1);
-    h += groupPanel(g, { showMode: true, planner: true });
+    h += groupPanel(g, { planner: true });
   }
   h += "</div>";
   root.innerHTML = h;
@@ -598,14 +583,13 @@ function render() {
 /* ---------- events ---------- */
 
 root.addEventListener("click", function (e) {
-  var t = e.target.closest("[data-tab],[data-mode],[data-item],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
+  var t = e.target.closest("[data-tab],[data-item],[data-refresh],[data-settings-toggle],[data-settings-save],[data-settings-reset],[data-plan-clear]");
   if (!t) return;
   if (t.hasAttribute("data-item")) {
     if (monday) monday.execute("openItemCard", { itemId: Number(t.getAttribute("data-item")) });
     return;
   }
   if (t.hasAttribute("data-tab")) { state.tab = t.getAttribute("data-tab"); window.scrollTo(0, 0); }
-  else if (t.hasAttribute("data-mode")) state.mode = t.getAttribute("data-mode");
   else if (t.hasAttribute("data-refresh")) { loadBoard(); return; }
   else if (t.hasAttribute("data-settings-toggle")) state.showSettings = !state.showSettings;
   else if (t.hasAttribute("data-plan-clear")) delete state.plan[state.tab];

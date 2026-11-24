@@ -27,7 +27,7 @@ It gives one tab per group plus a whole-board tab, and for each it shows:
 
 - total paid, adspend budgeted, management owed, and whether the client is in credit or over-allocated
 - live Meta spend, read from the Social Campaigns board by matching campaign names
-- a recommended adspend and management figure per campaign, split evenly or weighted by what each campaign paid
+- a recommended adspend and management figure per campaign, scaled by what each campaign paid
 - a "what if we add more campaigns" row for planning
 
 Management is a flat fee per campaign up to a cap per group (defaults 500 and 1500, change them under Settings in the view). Finished campaigns are held at what they actually spent, and a running campaign is never recommended less than it has already spent.
