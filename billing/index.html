@@ -115,7 +115,8 @@ var DEFAULTS = {
   feePerCampaign: 500,      // management fee charged per campaign
   feeCap: 1500,             // most management we take per group, however many campaigns run
   spendBoardId: "18424974331", // board with live Meta spend, matched to this board by campaign name
-  expectedCampaigns: ""     // campaigns expected per month; blank = work it out from past months and the current pace
+  expectedCampaigns: "",    // campaigns expected per month; blank = work it out from past months and the current pace
+  hedge: 50                 // % weight given to campaigns that are forecast but haven't arrived yet
 };
 var SETTINGS_KEY = "billing-view-settings-v1";
 
@@ -361,7 +362,11 @@ function count1(n) { return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.rou
   takes over. What's already running is certain, so the forecast is that plus
   the campaigns still expected in the days left.
 
-  Management per campaign is then the capped monthly fee over that total.
+  Campaigns that are only forecast count at half weight (the hedge setting)
+  when the monthly fee is shared out. That way running campaigns give up some
+  management for the ones we expect, but not all of it: if the expected ones
+  arrive we end up holding a bit too much, which goes back into adspend as
+  credit, and if they don't we're short by less.
 */
 function liveForecast(g, countNow) {
   var s = state.settings, base = null, used = 0;
@@ -386,10 +391,14 @@ function liveForecast(g, countNow) {
     more = Math.max(0, rate * (1 - f));
   }
   var expected = Math.max(countNow + more, 1);
+  var hedge = num(s.hedge); hedge = hedge == null ? DEFAULTS.hedge : Math.max(0, Math.min(100, hedge));
+  var shareOver = Math.max(countNow + (expected - countNow) * hedge / 100, 1);
   return {
     expected: expected, more: expected - countNow, count: countNow, base: base, used: used,
     manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f,
-    feeEach: Math.round(dealFee(expected) / expected * 100) / 100,
+    hedge: hedge,
+    feeEach: Math.round(dealFee(shareOver) / shareOver * 100) / 100,
+    ifAllArrive: Math.round(dealFee(shareOver) / shareOver * expected * 100) / 100, owedIfAllArrive: dealFee(expected),
     at: Date.now()
   };
 }
@@ -401,7 +410,13 @@ function describeForecast(fc) {
   else t += ", day " + fc.day + " of " + fc.days;
   if (fc.manual) t += ". Expected total set in Settings";
   else if (fc.base != null) t += ". Past " + (fc.used === 1 ? "month" : fc.used + " months") + " average " + count1(fc.base);
-  t += ". Expecting " + (fc.more >= 0.05 ? "about " + count1(fc.more) + " more, " : "no more, ") + count1(fc.expected) + " in total, so " + money(fc.feeEach) + " management each.";
+  if (fc.more >= 0.05) {
+    t += ". Expecting about " + count1(fc.more) + " more, " + count1(fc.expected) + " in total";
+    t += fc.hedge < 100 ? ". Counting the expected ones at " + (fc.hedge === 50 ? "half" : fc.hedge + "%") + ", that's " : ", so ";
+    t += money(fc.feeEach) + " management each.";
+  } else {
+    t += ". Expecting no more, so " + money(fc.feeEach) + " management each.";
+  }
   return t;
 }
 
@@ -616,7 +631,11 @@ function recNote(a) {
   var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
   if (!a.whatIf) {
     if (!a.needsChange) t += " Every campaign is already set to that.";
-    if (a.collected < a.fee - 1) t += " With only the " + a.n + " running that keeps " + money(a.collected) + " management against " + money(a.fee) + " owed, so it relies on the rest arriving.";
+    if (a.collected < a.fee - 1) {
+      t += " With only the " + a.n + " running that keeps " + money(a.collected) + " management against " + money(a.fee) + " owed.";
+      var extra = fc.ifAllArrive - fc.owedIfAllArrive;
+      if (fc.ifAllArrive != null && fc.more >= 0.05) t += " If the rest arrive it comes to about " + money(fc.ifAllArrive) + (extra > 1 ? ", which is " + money(extra) + " credit to put back into adspend." : ".");
+    }
     else if (a.collected > a.fee + 1) t += " That keeps " + money(a.collected) + " management against " + money(a.fee) + " owed, so " + money(a.collected - a.fee) + " could go back into adspend.";
   }
   var h = '<div class="panel-note">' + esc(t) + "</div>";
@@ -683,6 +702,7 @@ function settingsPanel() {
     '<div><label>Management fee per campaign ($)</label><input type="number" min="0" step="50" id="set-fee" value="' + esc(s.feePerCampaign) + '"></div>' +
     '<div><label>Maximum management per group ($)</label><input type="number" min="0" step="50" id="set-cap" value="' + esc(s.feeCap) + '"></div>' +
     '<div><label>Campaigns expected per month</label><input type="number" min="0" step="1" id="set-expected" value="' + esc(s.expectedCampaigns) + '" placeholder="Blank = forecast it"></div>' +
+    '<div><label>Weight for campaigns expected but not here yet (%)</label><input type="number" min="0" max="100" step="5" id="set-hedge" value="' + esc(s.hedge) + '"></div>' +
     '<div><label>Board ID to read live Meta spend from</label><input type="text" id="set-spend" value="' + esc(s.spendBoardId) + '" placeholder="Leave blank to turn off"></div>' +
     '</div><div class="settings-actions"><button class="btn btn-primary" data-settings-save>Save</button><button class="btn" data-settings-reset>Reset to defaults</button><span class="stamp">Saved in this browser only.</span></div></div>';
 }
@@ -753,7 +773,8 @@ root.addEventListener("click", function (e) {
       feePerCampaign: fee == null || fee < 0 ? DEFAULTS.feePerCampaign : fee,
       feeCap: cap == null || cap < 0 ? DEFAULTS.feeCap : cap,
       spendBoardId: document.getElementById("set-spend").value.replace(/[^0-9]/g, ""),
-      expectedCampaigns: num(document.getElementById("set-expected").value) || ""
+      expectedCampaigns: num(document.getElementById("set-expected").value) || "",
+      hedge: (function (v) { return v == null ? DEFAULTS.hedge : Math.max(0, Math.min(100, v)); })(num(document.getElementById("set-hedge").value))
     };
     saveSettings(state.settings); state.showSettings = false; loadBoard(); return;
   }
