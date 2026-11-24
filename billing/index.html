@@ -115,7 +115,8 @@ var DEFAULTS = {
   feePerCampaign: 500,      // management fee charged per campaign
   feeCap: 1500,             // most management we take per group, however many campaigns run
   spendBoardId: "18424974331", // board with live Meta spend, matched to this board by campaign name
-  expectedCampaigns: ""     // campaigns expected per month; blank = work it out from past months and the current pace
+  expectedCampaigns: "",    // campaigns expected per month; blank = work it out from past months and the current pace
+  lastStartDay: 20          // new campaigns for a month aren't expected after this day
 };
 var SETTINGS_KEY = "billing-view-settings-v1";
 
@@ -332,14 +333,19 @@ function groupMonth(g) {
   return m ? (+m[2]) * 12 + MONTHS.indexOf(m[1].toLowerCase()) : null;
 }
 
-/* How far through the group's month we are: 0 before it starts, 1 once it's over. */
+/*
+  How far through the group's month we are, for forecasting: 0 before it
+  starts, 1 once no more campaigns are expected. New campaigns come in during
+  the first part of the month, so that's the cut-off day, not the last day.
+*/
 function monthProgress(g) {
   var gm = groupMonth(g), t = today();
   var y = gm != null ? Math.floor(gm / 12) : t.getFullYear(), m = gm != null ? gm % 12 : t.getMonth();
   var days = new Date(y, m + 1, 0).getDate();
-  if (t < new Date(y, m, 1)) return { f: 0, day: 0, days: days };
-  if (t > new Date(y, m, days)) return { f: 1, day: days, days: days };
-  return { f: t.getDate() / days, day: t.getDate(), days: days };
+  var cut = Math.max(1, Math.min(days, Math.round(num(state.settings.lastStartDay) || DEFAULTS.lastStartDay)));
+  if (t < new Date(y, m, 1)) return { f: 0, day: 0, days: days, cut: cut };
+  if (t > new Date(y, m, days)) return { f: 1, day: days, days: days, cut: cut, over: true };
+  return { f: Math.min(1, t.getDate() / cut), day: t.getDate(), days: days, cut: cut };
 }
 
 function realCount(gid) {
@@ -388,7 +394,7 @@ function liveForecast(g, countNow) {
   var expected = Math.max(countNow + more, 1);
   return {
     expected: expected, more: expected - countNow, count: countNow, base: base, used: used,
-    manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f,
+    manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f, cut: mp.cut, over: !!mp.over,
     feeEach: Math.round(dealFee(expected) / expected * 100) / 100,
     at: Date.now()
   };
@@ -396,12 +402,14 @@ function liveForecast(g, countNow) {
 
 function describeForecast(fc) {
   var t = fc.count + " running";
-  if (fc.f >= 1) t += ", month finished";
+  if (fc.over || (fc.f >= 1 && !fc.cut)) t += ", month finished";
+  else if (fc.f >= 1) t += ", day " + fc.day + " of " + fc.days + ", past day " + fc.cut + " so no more are expected";
   else if (fc.f <= 0) t += ", month not started";
   else t += ", day " + fc.day + " of " + fc.days;
   if (fc.manual) t += ". Expected total set in Settings";
   else if (fc.base != null) t += ". Past " + (fc.used === 1 ? "month" : fc.used + " months") + " average " + count1(fc.base);
-  t += ". Expecting " + (fc.more >= 0.05 ? "about " + count1(fc.more) + " more, " : "no more, ") + count1(fc.expected) + " in total, so " + money(fc.feeEach) + " management each.";
+  t += fc.more >= 0.05 ? ". Expecting about " + count1(fc.more) + " more, " + count1(fc.expected) + " in total" : ". That makes " + count1(fc.expected) + " for the month";
+  t += ", so " + money(fc.feeEach) + " management each.";
   return t;
 }
 
@@ -683,6 +691,7 @@ function settingsPanel() {
     '<div><label>Management fee per campaign ($)</label><input type="number" min="0" step="50" id="set-fee" value="' + esc(s.feePerCampaign) + '"></div>' +
     '<div><label>Maximum management per group ($)</label><input type="number" min="0" step="50" id="set-cap" value="' + esc(s.feeCap) + '"></div>' +
     '<div><label>Campaigns expected per month</label><input type="number" min="0" step="1" id="set-expected" value="' + esc(s.expectedCampaigns) + '" placeholder="Blank = forecast it"></div>' +
+    '<div><label>No new campaigns expected after day</label><input type="number" min="1" max="31" step="1" id="set-cut" value="' + esc(s.lastStartDay) + '"></div>' +
     '<div><label>Board ID to read live Meta spend from</label><input type="text" id="set-spend" value="' + esc(s.spendBoardId) + '" placeholder="Leave blank to turn off"></div>' +
     '</div><div class="settings-actions"><button class="btn btn-primary" data-settings-save>Save</button><button class="btn" data-settings-reset>Reset to defaults</button><span class="stamp">Saved in this browser only.</span></div></div>';
 }
@@ -753,7 +762,8 @@ root.addEventListener("click", function (e) {
       feePerCampaign: fee == null || fee < 0 ? DEFAULTS.feePerCampaign : fee,
       feeCap: cap == null || cap < 0 ? DEFAULTS.feeCap : cap,
       spendBoardId: document.getElementById("set-spend").value.replace(/[^0-9]/g, ""),
-      expectedCampaigns: num(document.getElementById("set-expected").value) || ""
+      expectedCampaigns: num(document.getElementById("set-expected").value) || "",
+      lastStartDay: Math.max(1, Math.min(31, Math.round(num(document.getElementById("set-cut").value) || DEFAULTS.lastStartDay)))
     };
     saveSettings(state.settings); state.showSettings = false; loadBoard(); return;
   }
