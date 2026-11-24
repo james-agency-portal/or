@@ -372,6 +372,40 @@ function arrivalShare(g, f) {
   return { a: (seen + EVEN * f) / (k + EVEN), k: k };
 }
 
+/* Adspend a campaign has used up for credit purposes: what it actually spent once finished, otherwise its budget. */
+function usedAdspend(it) {
+  return isFinished(it) && it.spent != null ? it.spent : (it.adspend || 0);
+}
+
+/* A campaign only counts towards credit once its adspend has been set. Until then its payment is just waiting to be split. */
+function inCredit(it) { return !it.phantom && counted(it) && it.adspend != null; }
+
+/* A month's credit: paid, less adspend, less the management the deal allows. + means the client has money unspent, - means over-allocated. */
+function creditParts(items) {
+  var paid = 0, used = 0, n = 0, waiting = 0;
+  items.forEach(function (it) {
+    if (it.phantom || !counted(it)) return;
+    if (!inCredit(it)) { waiting++; return; }
+    paid += it.paid || 0; used += usedAdspend(it); n++;
+  });
+  return { paid: paid, used: used, fee: dealFee(n), n: n, waiting: waiting, credit: paid - used - dealFee(n) };
+}
+function groupCredit(gid) {
+  return creditParts(state.board.items.filter(function (it) { return it.groupId === gid; })).credit;
+}
+function totalCredit() {
+  return state.board.groups.reduce(function (sum, g) { return sum + groupCredit(g.id); }, 0);
+}
+/* Credit left over (or owed) from the months before this one. It gets worked into this month's new campaigns. */
+function carriedCredit(g) {
+  var gm = groupMonth(g);
+  if (gm == null) return 0;
+  return state.board.groups.reduce(function (sum, o) {
+    var om = groupMonth(o);
+    return om != null && om < gm ? sum + groupCredit(o.id) : sum;
+  }, 0);
+}
+
 function realCount(gid) {
   return state.board.items.filter(function (it) { return it.groupId === gid && counted(it); }).length;
 }
@@ -478,13 +512,13 @@ function describeForecast(fc) {
 function allocate(items, g) {
   var rows = items.filter(counted);
   var n = rows.length;
-  var paid = 0, adspend = 0, spent = 0, hasSpend = false, whatIf = false;
+  var paid = 0, adspend = 0, used = 0, spent = 0, hasSpend = false, whatIf = false;
   rows.forEach(function (it) {
-    paid += it.paid || 0; adspend += it.adspend || 0;
+    paid += it.paid || 0; adspend += it.adspend || 0; used += it.phantom ? 0 : usedAdspend(it);
     if (it.spent != null) { spent += it.spent; hasSpend = true; }
     if (it.phantom) whatIf = true;
   });
-  var fee = dealFee(n);
+  var fee = dealFee(n), cp = creditParts(rows);
   var now = g ? liveForecast(g, n) : null;
   var fc = g ? (whatIf ? now : (state.forecasts[g.id] || now)) : null;
   var feeEach = fc ? fc.feeEach : (n ? fee / n : 0);
@@ -517,21 +551,49 @@ function allocate(items, g) {
     }
   });
 
-  // New campaigns share whatever management is still needed, each between nothing and the full per-campaign fee.
+  // Credit carried in from earlier months. Positive goes back to the client as extra adspend,
+  // negative is recovered by holding adspend back.
+  var carry = g ? carriedCredit(g) : 0, carryShare = {}, placed = 0;
+  if (Math.abs(carry) < 1) carry = 0;
+  // How much of it is still to be placed: campaigns already set this month may have used it up.
+  var setRequired = Math.min(feeEach * (n - fresh.length), dealFee(n - fresh.length));
+  var left = carry + held - setRequired;
+  var creditLeft = carry > 0 ? Math.max(0, Math.min(left, carry)) : carry < 0 ? Math.min(0, Math.max(left, carry)) : 0;
+  if (Math.abs(creditLeft) < 1) creditLeft = 0;
+  var label = function (it, amount) {
+    if (Math.abs(amount) < 1) return;
+    carryShare[it.id] = amount; placed += amount;
+    if (!why[it.id]) why[it.id] = amount > 0 ? "includes " + money(amount) + " credit" : "less " + money(-amount) + " owed from earlier";
+  };
+
+  // New campaigns share whatever management is still needed, and take the carried credit between them.
+  // Leaving credit aside, a new campaign's management stays between nothing and the full per-campaign fee.
   var freshFee = null;
   if (fresh.length) {
-    var share = Math.max(0, Math.min((required - held) / fresh.length, state.settings.feePerCampaign));
+    var perNew = creditLeft / fresh.length;
+    var share = (required - held - carry) / fresh.length;
+    share = Math.max(share, -Math.max(0, perNew));
+    share = Math.min(share, state.settings.feePerCampaign + Math.max(0, -perNew));
     fresh.forEach(function (it) {
       var m = Math.min(share, it.paid || 0), floor = Math.max(0, it.spent || 0);
       rec[it.id] = Math.max((it.paid || 0) - m, floor);
       if (floor > (it.paid || 0) - m + 0.005) why[it.id] = "already spent more";
       held += (it.paid || 0) - rec[it.id];
-      if (freshFee == null) freshFee = (it.paid || 0) - rec[it.id];
+      label(it, perNew);
+      if (freshFee == null) freshFee = (it.paid || 0) - rec[it.id] + perNew;
+    });
+  } else if (reviewing && movable.length && Math.abs(left) > tol) {
+    // No new campaigns to carry it, and a Re-forecast is open: spread what's left over (or owed) across the set campaigns.
+    movable.forEach(function (it) {
+      var r2 = Math.max(rec[it.id] + left / movable.length, Math.max(0, it.spent || 0));
+      held -= r2 - rec[it.id]; rec[it.id] = r2;
+      label(it, creditLeft / movable.length);
     });
   }
 
   // Still short? Raise the campaigns holding the least management up to a common level, as far as their unspent budget allows.
-  var short = required - held, raised = 0;
+  // Credit from earlier months counts towards this month's management: it was paid for back then.
+  var short = required - held - carry, raised = 0;
   if (reviewing && short > tol && movable.length) {
     var m0 = {}, cap = {}, lo = Infinity, hi = 0;
     movable.forEach(function (it) {
@@ -550,7 +612,7 @@ function allocate(items, g) {
       var m = Math.max(m0[it.id], Math.min(b0, cap[it.id]));
       if (m - m0[it.id] >= 0.005) { rec[it.id] = (it.paid || 0) - m; why[it.id] = "trimmed to cover management"; raised++; held += m - m0[it.id]; }
     });
-    short = required - held;
+    short = required - held - carry;
   }
 
   var recSum = 0, changes = 0;
@@ -563,13 +625,15 @@ function allocate(items, g) {
     rows: rows, n: n, paid: paid, adspend: adspend, spent: spent, hasSpend: hasSpend,
     fee: fee,                          // what the deal says is owed for the campaigns here now
     boardFee: paid - adspend,          // what the board's formula column adds up to
-    credit: paid - adspend - fee,      // + = money not yet put into adspend, - = over-allocated
+    credit: cp.credit,                 // + = money not yet put into adspend, - = over-allocated
+    cp: cp,
+    used: used, carry: carry, creditLeft: creditLeft, placed: placed, carryShare: carryShare,
     blendedFee: n ? fee / n : 0,
     feeRate: paid ? fee / paid : 0,
     rec: rec, why: why, recSum: recSum,
     required: required, short: Math.max(0, short), raised: raised, moved: moved, tol: tol, reviewing: reviewing, fresh: fresh.length, freshFee: freshFee, set: movable.length,
     changes: changes, needsChange: changes > 0,
-    collected: paid - recSum,          // management we'd keep if the recommendations were applied and nothing else changed
+    collected: paid - recSum + carry,          // management we'd keep if the recommendations were applied and nothing else changed
     forecast: fc, whatIf: whatIf,
     // Re-forecasting is for emergencies. Only flag it when the month has gone well off the original forecast:
     // out by a campaign and a half or more, and enough to move management per campaign by $50.
@@ -640,13 +704,24 @@ function statusPill(it) {
   return '<span class="pill' + cls + '">' + esc(it.status) + "</span>";
 }
 
-function creditCard(a) {
+function creditCard(a, label) {
   var c = a.credit;
-  if (!a.n) return card("Credit", "–", "No campaigns with money against them yet.");
-  var sub = "Paid " + money(a.paid) + " less " + money(a.adspend) + " adspend and " + money(a.fee) + " management.";
-  if (Math.abs(c) < 0.005) return card("Credit", "Balanced", "Adspend plus management equals what was paid.");
-  if (c > 0) return card("Credit", money(c), "Under. " + sub + " This much is still unallocated.", "good");
-  return card("Over-allocated", money(-c), "Over. " + sub, "bad");
+  if (!a.n) return card(label, "–", "No campaigns with money against them yet.");
+  var cp = a.cp, wait = cp.waiting ? " " + cp.waiting + (cp.waiting === 1 ? " campaign isn't" : " campaigns aren't") + " counted until adspend is set." : "";
+  if (!cp.n) return card(label, "–", "No campaign has its adspend set yet.");
+  var sub = "Paid " + money(cp.paid) + " less " + money(cp.used) + " adspend and " + money(cp.fee) + " management." + wait;
+  if (Math.abs(c) < 0.005) return card(label, "Balanced", "Adspend plus management equals what was paid." + wait);
+  if (c > 0) return card(label, money(c), "Under. " + sub + " This much is still unallocated.", "good");
+  return card(label, "-" + money(-c), "Over-allocated. " + sub, "bad");
+}
+
+/* Every month on the board added together. Shown beside the month's own credit. */
+function totalCreditCard() {
+  var c = totalCredit(), months = state.board.groups.length;
+  var sub = "Across " + (months === 1 ? "the one month" : "all " + months + " months") + " on the board.";
+  if (Math.abs(c) < 0.005) return card("Total credit", "Balanced", sub);
+  if (c > 0) return card("Total credit", money(c), sub + " The client has this much unspent.", "good");
+  return card("Total credit", "-" + money(-c), sub + " Over-allocated by this much.", "bad");
 }
 
 function card(label, value, sub, cls, extra) {
@@ -662,7 +737,8 @@ function cards(a, groupCount) {
   html += card("Total paid", money(a.paid), a.n + (a.n === 1 ? " campaign" : " campaigns"));
   html += card("Adspend budgeted", money(a.adspend), a.paid ? Math.round(a.adspend / a.paid * 100) + "% of what was paid" : "");
   html += card("Management", money(a.fee), feeSub);
-  html += creditCard(a);
+  if (a.isBoard) html += creditCard(a, "Total credit");
+  else html += creditCard(a, "Credit this month") + totalCreditCard();
   if (a.hasSpend) {
     var pct = a.adspend ? a.spent / a.adspend * 100 : 0;
     html += card("Spent so far", money(a.spent), money(a.adspend - a.spent) + " of budget left", "",
@@ -698,14 +774,14 @@ function campaignTable(a, opts) {
     h += "<td>" + (it.phantom || unset ? "–" : money((it.paid || 0) - it.adspend)) + "</td>";
     if (a.hasSpend) h += "<td>" + (it.spent == null ? "–" : money(it.spent)) + "</td>";
     h += '<td class="rec"><strong>' + money(rec) + "</strong>" + (a.why[it.id] ? '<span class="lock">' + esc(a.why[it.id]) + "</span>" : "") + "</td>";
-    h += '<td class="rec">' + money((it.paid || 0) - rec) + "</td>";
+    h += '<td class="rec">' + money((it.paid || 0) - rec + (a.carryShare[it.id] || 0)) + "</td>";
     h += '<td class="rec">' + (it.phantom ? '<span class="flat">new</span>' : unset ? '<span class="up">set adspend to ' + money(rec) + "</span>" : changeCell(a, rec - (it.adspend || 0))) + "</td>";
     h += '<td class="rec">' + daily + "</td>";
     h += "</tr>";
   });
   h += "</tbody><tfoot><tr><td>Total</td><td>" + money(a.paid) + "</td><td>" + money(a.adspend) + "</td><td>" + money(a.boardFee) + "</td>";
   if (a.hasSpend) h += "<td>" + money(a.spent) + "</td>";
-  h += '<td class="rec">' + money(a.recSum) + '</td><td class="rec">' + money(a.paid - a.recSum) + '</td><td class="rec">' + signed(a.recSum - a.adspend) + '</td><td class="rec"></td></tr></tfoot></table></div>';
+  h += '<td class="rec">' + money(a.recSum) + '</td><td class="rec">' + money(a.paid - a.recSum + a.placed) + '</td><td class="rec">' + signed(a.recSum - a.adspend) + '</td><td class="rec"></td></tr></tfoot></table></div>';
   return h;
 }
 
@@ -795,13 +871,21 @@ function reforecastMsg(gid) {
 function recNote(a) {
   if (!a.n) return "";
   var fc = a.forecast, t = (a.whatIf ? "What if: " : "") + describeForecast(fc);
-  if (a.fresh && a.freshFee != null && Math.abs(a.freshFee - fc.feeEach) >= 1) {
+  if (a.placed) {
+    var who = a.fresh ? (a.fresh === 1 ? "the new campaign" : "the " + a.fresh + " new campaigns") : "the campaigns here";
+    t += a.placed > 0 ? " Earlier months left " + money(a.placed) + " credit, so that is added to the adspend of " + who + "."
+                      : " Earlier months are over by " + money(-a.placed) + ", so that is held back from the adspend of " + who + ".";
+  } else if (a.creditLeft) {
+    t += a.creditLeft > 0 ? " Earlier months left " + money(a.creditLeft) + " credit. It will go into the next new campaign's adspend." : " Earlier months are over by " + money(-a.creditLeft) + ". It will come off the next new campaign's adspend.";
+  } else if (a.carry) {
+    t += a.carry > 0 ? " The " + money(a.carry) + " credit from earlier months has already gone into this month's adspend." : " The " + money(-a.carry) + " owed from earlier months has already been held back this month.";
+  } else if (a.fresh && a.freshFee != null && Math.abs(a.freshFee - fc.feeEach) >= 1) {
     t += " The campaigns already set hold " + (a.freshFee < fc.feeEach ? "more" : "less") + " than that between them, so " + (a.whatIf ? "new ones would go in" : "the new " + (a.fresh === 1 ? "one goes" : "ones go") + " in") + " at " + money(a.freshFee) + " to even it out.";
   }
   if (!a.whatIf) {
     if (a.raised) t += " Management was going to come up short, so " + a.raised + (a.raised === 1 ? " campaign" : " campaigns") + " already set " + (a.raised === 1 ? "needs" : "need") + " to give some adspend back, starting with the ones holding the least management.";
     else if (a.moved) t += " After this Re-forecast, " + a.moved + (a.moved === 1 ? " campaign already set is" : " campaigns already set are") + " more than " + money(a.tol) + " over or under that, so " + (a.moved === 1 ? "it's" : "they're") + " brought onto it." + (a.set > a.moved ? " The rest are close enough to leave." : "");
-    else if (a.set && a.reviewing) t += " Everything already set is within " + money(a.tol) + " of that, so nothing needs to change.";
+    else if (a.set && a.reviewing && !a.placed) t += " Everything already set is within " + money(a.tol) + " of that, so nothing needs to change.";
     else if (a.set) t += " Campaigns already set stay as they are.";
     if (a.short > 1) t += " Even so it's " + money(a.short) + " short, because the rest has already been spent.";
     if (a.collected > a.fee + 1) t += " Management held is " + money(a.collected - a.fee) + " over what's owed today, which sits as credit.";
@@ -862,14 +946,15 @@ function summaryTable(groups) {
 
 /* Whole-board totals: the cap applies to each group separately, so add the groups up. */
 function boardTotals(groups) {
-  var t = { n: 0, paid: 0, adspend: 0, spent: 0, hasSpend: false, fee: 0 };
+  var t = { n: 0, paid: 0, adspend: 0, used: 0, spent: 0, hasSpend: false, fee: 0, isBoard: true, cp: { paid: 0, used: 0, fee: 0, n: 0, waiting: 0 } };
   groups.forEach(function (g) {
     var a = allocate(state.board.items.filter(function (it) { return it.groupId === g.id; }), g);
-    t.n += a.n; t.paid += a.paid; t.adspend += a.adspend; t.fee += a.fee;
+    t.n += a.n; t.paid += a.paid; t.adspend += a.adspend; t.used += a.used; t.fee += a.fee;
+    ["paid", "used", "fee", "n", "waiting"].forEach(function (k) { t.cp[k] += a.cp[k]; });
     if (a.hasSpend) { t.spent += a.spent; t.hasSpend = true; }
   });
   t.boardFee = t.paid - t.adspend;
-  t.credit = t.paid - t.adspend - t.fee;
+  t.credit = t.cp.paid - t.cp.used - t.cp.fee;
   t.blendedFee = t.n ? t.fee / t.n : 0;
   t.feeRate = t.paid ? t.fee / t.paid : 0;
   return t;

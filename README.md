@@ -25,7 +25,7 @@ Use a Business Manager **system user** token so it never expires:
 
 It gives one tab per group plus a whole-board tab, and for each it shows:
 
-- total paid, adspend budgeted, management owed, and whether the client is in credit or over-allocated
+- total paid, adspend budgeted, management owed, and whether the client is in credit or over-allocated, for the month and across every month on the board. Credit left over from earlier months is added to the recommended adspend of new campaigns, and an overspend is held back from it
 - live Meta spend, read from the Social Campaigns board by matching campaign names
 - a forecast of how many campaigns the month will end up with, and the management each one should carry
 - a recommended adspend and management figure per campaign. New campaigns get the forecast management and the rest of their payment as adspend. Campaigns already set are left alone. Only after someone clicks Re-forecast are they changed, and then only the ones whose management is more than $75 over or under the new forecast (changeable in Settings)
