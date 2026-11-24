@@ -322,6 +322,7 @@ function loadBoard() {
 
 /* ---------- the maths ---------- */
 
+var HISTORY_MONTHS = 12;  // how far back the forecast looks; the newest month weighs 12, the oldest 1
 var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 /* A campaign counts once it has money against it. Blank rows are ignored. */
@@ -348,6 +349,28 @@ function monthProgress(g) {
   return { f: t.getDate() / days, day: t.getDate(), days: days };
 }
 
+/*
+  What share of a month's campaigns have usually started by this point in it,
+  going on the Start Date of campaigns in earlier months on this board.
+
+  With few past campaigns to go on it leans towards assuming they arrive
+  evenly through the month. The more months the board holds, the more the
+  real pattern takes over.
+*/
+function arrivalShare(g, f) {
+  if (f <= 0) return { a: 0, k: 0 };
+  if (f >= 1) return { a: 1, k: 0 };
+  var gm = groupMonth(g), earlier = {};
+  state.board.groups.forEach(function (o) { var om = groupMonth(o); if (gm != null && om != null && om < gm) earlier[o.id] = true; });
+  var k = 0, seen = 0, EVEN = 4;
+  state.board.items.forEach(function (it) {
+    if (!earlier[it.groupId] || !counted(it) || !it.start) return;
+    var frac = it.start.getDate() / new Date(it.start.getFullYear(), it.start.getMonth() + 1, 0).getDate();
+    k++; if (frac <= f + 1e-9) seen++;
+  });
+  return { a: (seen + EVEN * f) / (k + EVEN), k: k };
+}
+
 function realCount(gid) {
   return state.board.items.filter(function (it) { return it.groupId === gid && counted(it); }).length;
 }
@@ -359,12 +382,15 @@ function count1(n) { return Math.abs(n - Math.round(n)) < 0.05 ? String(Math.rou
 
   Two signals, blended by how far through the month we are:
 
-    history  weighted average of the last three months' campaign counts
-             (most recent counts three times, then twice, then once)
-    pace     campaigns so far this month, scaled up to a full month
+    history  weighted average of campaign counts in the earlier month groups
+             on this board, up to twelve months back, newer months weighing
+             more (12 for the newest down to 1 for the oldest)
+    pace     campaigns so far this month, scaled up to a full month using
+             when in the month past campaigns have actually started
 
-  Early in the month history does most of the work. Late in the month the pace
-  takes over. What's already running is certain, so the forecast is that plus
+  Both come only from this board, so the forecast sharpens as months are added.
+  Early in a month history does most of the work. Once most of a month's
+  campaigns have usually started, the pace takes over. What's already running is certain, so the forecast is that plus
   the campaigns still expected in the days left.
 
   Campaigns that are only forecast count at half weight (the hedge setting)
@@ -381,26 +407,28 @@ function liveForecast(g, countNow) {
     var om = groupMonth(o);
     if (gm != null && om != null ? om < gm : (gm == null && om == null && i > idx)) past.push({ order: om != null ? om : -i, n: realCount(o.id) });
   });
-  past = past.filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.order - a.order; }).slice(0, 3);
+  past = past.filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.order - a.order; }).slice(0, HISTORY_MONTHS);
   var wsum = 0, nsum = 0;
-  past.forEach(function (x, i) { var w = 3 - i; wsum += w; nsum += w * x.n; });
+  past.forEach(function (x, i) { var w = HISTORY_MONTHS - i; wsum += w; nsum += w * x.n; });
   if (wsum) { base = nsum / wsum; used = past.length; }
 
   var mp = monthProgress(g), f = mp.f, more, manual = num(s.expectedCampaigns);
+  var share = arrivalShare(g, f), A = share.a;
   if (manual != null && manual > 0) {
     more = Math.max(0, manual - countNow);
   } else {
-    // Don't let one early campaign scale up to a huge month: treat the month as at least a third gone.
-    var pace = f > 0 ? countNow / Math.max(f, 1 / 3) : null;
-    var rate = base != null && pace != null ? (1 - f) * base + f * pace : (base != null ? base : (pace != null ? pace : countNow));
-    more = Math.max(0, rate * (1 - f));
+    // A is the share of the month's campaigns that have usually started by now.
+    // Don't let one early campaign scale up to a huge month: treat it as at least a third.
+    var pace = A > 0 ? countNow / Math.max(A, 1 / 3) : null;
+    var rate = base != null && pace != null ? (1 - A) * base + A * pace : (base != null ? base : (pace != null ? pace : countNow));
+    more = Math.max(0, rate * (1 - A));
   }
   var expected = Math.max(countNow + more, 1);
   var hedge = num(s.hedge); hedge = hedge == null ? DEFAULTS.hedge : Math.max(0, Math.min(100, hedge));
   var shareOver = Math.max(countNow + (expected - countNow) * hedge / 100, 1);
   return {
     expected: expected, more: expected - countNow, count: countNow, base: base, used: used,
-    manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f,
+    manual: manual != null && manual > 0, day: mp.day, days: mp.days, f: f, share: A, starts: share.k,
     hedge: hedge,
     feeEach: Math.round(dealFee(shareOver) / shareOver * 100) / 100,
     ifAllArrive: Math.round(dealFee(shareOver) / shareOver * expected * 100) / 100, owedIfAllArrive: dealFee(expected),
@@ -415,6 +443,7 @@ function describeForecast(fc) {
   else t += ", day " + fc.day + " of " + fc.days;
   if (fc.manual) t += ". Expected total set in Settings";
   else if (fc.base != null) t += ". Past " + (fc.used === 1 ? "month" : fc.used + " months") + " average " + count1(fc.base);
+  if (!fc.manual && fc.starts >= 4 && fc.f > 0 && fc.f < 1) t += ". By now about " + Math.round(fc.share * 100) + "% of a month's campaigns have usually started";
   if (fc.more >= 0.05) {
     t += ". Expecting about " + count1(fc.more) + " more, " + count1(fc.expected) + " in total";
     t += fc.hedge < 100 ? ". Counting the expected ones at " + (fc.hedge === 50 ? "half" : fc.hedge + "%") + ", that's " : ", so ";
@@ -756,7 +785,7 @@ function recNote(a) {
     else if (a.set) t += " Nothing already set needs to change.";
     if (a.short > 1) t += " Even so it's " + money(a.short) + " short, because the rest has already been spent.";
     if (a.collected > a.fee + 1) t += " Management held is " + money(a.collected - a.fee) + " over what's owed today, which sits as credit.";
-    else if (a.collected < a.fee - 1 && fc.more >= 0.05) t += " Holding " + money(a.collected) + " against " + money(a.fee) + " owed for now. The campaigns still expected make up the rest.";
+    else if (a.collected < a.fee - 20 && fc.more >= 0.05) t += " Holding " + money(a.collected) + " against " + money(a.fee) + " owed for now. The campaigns still expected make up the rest.";
   }
   var h = '<div class="panel-note">' + esc(t) + "</div>";
   if (a.stale) {
@@ -788,7 +817,11 @@ function groupPanel(g, opts) {
   // Quiet by default. It only stands out when the month has gone far enough off to need it.
   h += '<button class="btn' + (a.stale ? " btn-primary" : " btn-quiet") + '" data-reforecast="' + esc(g.id) + '"' + (busy ? " disabled" : "") + ">" + (busy ? "Re-forecasting…" : "Re-forecast") + "</button>";
   h += "</div>";
-  if (!a.n) { h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h; }
+  if (!a.n) {
+    // Nothing in yet: still say what the first campaign should be set up at.
+    if (a.forecast) h += '<div class="panel-note">' + esc(describeForecast(a.forecast)) + " Add a campaign with its Amount Paid and this will show what to set.</div>";
+    h += '<div class="empty">No campaigns with an amount paid in this group yet.</div></div>'; return h;
+  }
   h += reforecastMsg(g.id) + recNote(a) + campaignTable(a);
   h += applyBar(g.id, a);
   if (opts.planner) h += planner(g.id, a);
